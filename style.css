@@ -410,3 +410,12 @@ body.mirror { transform: scaleX(-1); transition: transform .6s; }
 @keyframes gfall { to { transform: translateY(120vh) rotate(var(--r)); } }
 .rising { animation: rise .6s cubic-bezier(.2,1.5,.4,1) !important; }
 @keyframes rise { from { transform: translateY(-60px); opacity: 0; } }
+
+/* Booster légendaire secret : reflets arc-en-ciel */
+.pack-legendaire .pack-title, .pack-legendaire .pack-logo { color: #ffd23f; text-shadow: 0 0 14px rgba(255,210,63,.8); }
+.pack-legendaire .pack-body::before, .pack-legendaire .pack-top::after {
+  background-blend-mode: overlay;
+  animation: holo 4s linear infinite;
+}
+.pack-legendaire:not(.mini) { filter: drop-shadow(0 18px 22px rgba(0,0,0,.45)) drop-shadow(0 0 30px rgba(255,210,63,.7)); }
+.pack-legendaire .pack-shine { background: linear-gradient(115deg, transparent 30%, rgba(255,0,180,.35) 42%, rgba(0,255,230,.35) 50%, rgba(255,240,0,.4) 58%, transparent 70%); background-size: 250% 100%; }
