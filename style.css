@@ -372,3 +372,41 @@ input, select {
   .card-desc { display: none; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .8rem; }
 }
+
+/* ---------- Codes secrets ---------- */
+.cheat-banner {
+  position: fixed; left: 50%; top: 38%; z-index: 90; pointer-events: none; text-align: center;
+  display: flex; flex-direction: column; gap: .2rem; padding: 1rem 2rem; border-radius: 16px;
+  background: rgba(10, 8, 30, .85); border: 2px solid var(--accent);
+  box-shadow: 0 0 40px rgba(255,204,77,.5), inset 0 0 20px rgba(255,204,77,.2);
+  animation: cheatIn 2.8s cubic-bezier(.2,1.4,.4,1) forwards;
+}
+.cheat-banner small { font-size: .7rem; letter-spacing: .3em; text-transform: uppercase; color: var(--muted); }
+.cheat-banner b { font-family: Fraunces, serif; font-size: 2.2rem; color: var(--accent); text-shadow: 0 0 12px rgba(255,204,77,.8), 0 0 30px rgba(255,93,200,.6); }
+.cheat-banner span { font-size: .9rem; }
+@keyframes cheatIn {
+  0% { transform: translate(-50%, -50%) scale(0) rotate(-12deg); opacity: 0; }
+  15% { transform: translate(-50%, -50%) scale(1.12) rotate(2deg); opacity: 1; }
+  25% { transform: translate(-50%, -50%) scale(1) rotate(0); }
+  80% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  100% { transform: translate(-50%, -80%) scale(.9); opacity: 0; }
+}
+.fx i.coin-drop {
+  width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 35% 30%, #fff3b0, var(--accent) 60%, #c78f00);
+  color: #5a3d00; font: 800 .8rem Inter, sans-serif; font-style: normal; box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
+body.rainbow main, body.rainbow .topbar { animation: hue 1.2s linear infinite; }
+@keyframes hue { to { filter: hue-rotate(360deg); } }
+body.disco::before {
+  content: ""; position: fixed; inset: -50%; z-index: 0; pointer-events: none;
+  background: conic-gradient(rgba(255,0,150,.18), rgba(0,200,255,.18), rgba(255,220,0,.18), rgba(120,255,80,.18), rgba(255,0,150,.18));
+  animation: spin 3s linear infinite;
+}
+body.disco .card, body.disco .pack, body.disco .logo { animation: dance .45s ease-in-out infinite alternate; }
+@keyframes dance { from { transform: rotate(-5deg) translateY(0); } to { transform: rotate(5deg) translateY(-8px); } }
+body.mirror { transform: scaleX(-1); transition: transform .6s; }
+.falling { animation: gfall 1.3s cubic-bezier(.55,0,1,.45) forwards !important; }
+@keyframes gfall { to { transform: translateY(120vh) rotate(var(--r)); } }
+.rising { animation: rise .6s cubic-bezier(.2,1.5,.4,1) !important; }
+@keyframes rise { from { transform: translateY(-60px); opacity: 0; } }
