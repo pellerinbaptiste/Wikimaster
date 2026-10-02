@@ -103,28 +103,88 @@ input, select {
 .booster-hero { display: flex; gap: 2.5rem; align-items: center; flex-wrap: wrap; justify-content: center; }
 .booster-info { flex: 1 1 320px; max-width: 520px; }
 .pack {
-  position: relative; width: 210px; height: 300px; border-radius: 16px; cursor: pointer; overflow: hidden;
-  background: linear-gradient(160deg, var(--c1, #7c6cff), var(--c2, #ff5dc8) 55%, var(--c3, #ffcc4d));
-  box-shadow: 0 20px 50px rgba(124,108,255,.45), inset 0 0 0 3px rgba(255,255,255,.25);
-  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
-  transition: transform .2s; user-select: none;
+  /* --h : hauteur du sachet, --top : hauteur de la languette à déchirer, --zz : largeur des dents du sertissage */
+  --h: 300px; --top: 38px; --zz: 10px;
+  --foil: linear-gradient(160deg, var(--c1, #7c6cff), var(--c2, #ff5dc8) 55%, var(--c3, #ffcc4d));
+  position: relative; width: 210px; height: var(--h); cursor: pointer; flex: none;
+  user-select: none; transition: transform .2s;
+  filter: drop-shadow(0 18px 22px rgba(0,0,0,.45)) drop-shadow(0 0 26px color-mix(in srgb, var(--c2, #ff5dc8) 45%, transparent));
   animation: float 3s ease-in-out infinite;
 }
 .pack:hover { transform: rotate(-2deg) scale(1.03); }
-.pack.disabled { filter: grayscale(.8) brightness(.6); cursor: not-allowed; animation: none; }
-.pack.opening { animation: shake .5s, tear .4s .5s forwards; }
+.pack.disabled { filter: grayscale(.8) brightness(.6) drop-shadow(0 12px 18px rgba(0,0,0,.45)); cursor: not-allowed; animation: none; }
 @keyframes float { 50% { transform: translateY(-8px); } }
-@keyframes shake { 20%,60% { transform: rotate(-4deg); } 40%,80% { transform: rotate(4deg); } }
-@keyframes tear { to { transform: scale(1.3); opacity: 0; } }
-.pack-logo { font-family: Fraunces, serif; font-size: 4.5rem; font-weight: 800; color: #fff; text-shadow: 0 4px 16px rgba(0,0,0,.3); }
-.pack-title { font-family: Fraunces, serif; font-size: 1.5rem; font-weight: 800; color: #fff; line-height: 1.1; }
-.pack-sub { margin-top: .6rem; font-size: .75rem; color: rgba(255,255,255,.85); }
+
+/* languette du haut (sertie en dents de scie) */
+.pack-top, .pack-body { position: absolute; left: 0; right: 0; overflow: hidden; background: var(--foil); background-size: 100% var(--h); }
+.pack-top {
+  top: 0; height: var(--top); transform-origin: 0 100%;
+  -webkit-mask: conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / var(--zz) 100% repeat-x;
+          mask: conic-gradient(from 135deg at top, #0000, #000 1deg 89deg, #0000 90deg) top / var(--zz) 100% repeat-x;
+}
+/* corps du sachet (serti en bas) */
+.pack-body {
+  top: var(--top); bottom: 0; background-position: 0 calc(-1 * var(--top));
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  border-top: 2px dashed rgba(255,255,255,.55);
+  -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / var(--zz) 100% repeat-x;
+          mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) bottom / var(--zz) 100% repeat-x;
+}
+/* stries du sertissage */
+.pack-top::before, .pack-body::after {
+  content: ""; position: absolute; left: 0; right: 0; height: calc(var(--top) * .62); pointer-events: none;
+  background:
+    linear-gradient(rgba(0,0,0,.18), transparent 30%, transparent 70%, rgba(0,0,0,.25)),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.28) 0 2px, rgba(0,0,0,.2) 2px 4px);
+}
+.pack-top::before { top: 0; }
+.pack-body::after { bottom: 0; }
+/* reflets de l'aluminium : ombres sur les côtés, plis, brillance */
+.pack-top::after, .pack-body::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(0,0,0,.4), rgba(255,255,255,.12) 7%, transparent 16%, transparent 84%, rgba(255,255,255,.1) 93%, rgba(0,0,0,.4)),
+    repeating-linear-gradient(97deg, transparent 0 22px, rgba(255,255,255,.08) 28px, transparent 34px, rgba(0,0,0,.07) 44px, transparent 52px),
+    radial-gradient(90% 45% at 28% 22%, rgba(255,255,255,.4), transparent 60%),
+    radial-gradient(70% 40% at 80% 85%, rgba(255,255,255,.18), transparent 60%);
+}
+.pack-top::after { background-size: 100% var(--h); }
+.pack-body::before { background-size: 100% var(--h); background-position: 0 calc(-1 * var(--top)); }
+.pack-notch { position: absolute; right: 12px; bottom: 3px; font-size: .55rem; font-weight: 700; letter-spacing: .08em; color: rgba(255,255,255,.75); text-transform: uppercase; }
+
+.pack-emblem {
+  position: relative; display: grid; place-items: center; width: 96px; height: 96px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.45), rgba(255,255,255,.08) 60%);
+  box-shadow: inset 0 0 0 3px rgba(255,255,255,.55), 0 6px 18px rgba(0,0,0,.25);
+  margin-top: -18px;
+}
+.pack-logo { font-family: Fraunces, serif; font-size: 3.4rem; font-weight: 800; color: #fff; text-shadow: 0 3px 12px rgba(0,0,0,.35); line-height: 1; }
+.pack-band {
+  position: relative; margin-top: .9rem; width: 100%; padding: .35rem 0;
+  background: rgba(0,0,0,.28); box-shadow: inset 0 1px rgba(255,255,255,.25), inset 0 -1px rgba(255,255,255,.25);
+}
+.pack-title { font-family: Fraunces, serif; font-size: 1.35rem; font-weight: 800; color: #fff; line-height: 1.05; }
+.pack-kicker { font-size: .6rem; font-weight: 700; letter-spacing: .3em; color: rgba(255,255,255,.8); text-transform: uppercase; }
+.pack-sub { position: relative; margin-top: .55rem; font-size: .68rem; color: rgba(255,255,255,.9); }
+.pack-count {
+  position: absolute; top: 10px; left: 12px; z-index: 1; font-size: .62rem; font-weight: 800; color: #fff;
+  background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.4); border-radius: 99px; padding: .1rem .45rem;
+}
 .pack-shine {
   position: absolute; inset: 0;
-  background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.45) 50%, transparent 65%);
+  background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.4) 50%, transparent 65%);
   background-size: 250% 100%; animation: shine 3s linear infinite;
 }
 @keyframes shine { from { background-position: 150% 0; } to { background-position: -100% 0; } }
+
+/* ouverture : la languette s'arrache, puis le sachet tremble et s'ouvre */
+.pack.opening { animation: none; }
+.pack.opening .pack-top { animation: rip .45s .1s cubic-bezier(.5,0,.8,.4) forwards; }
+.pack.opening .pack-body { animation: shake .45s .5s, burstopen .35s .95s forwards; }
+@keyframes rip { 30% { transform: translate(4px, -6px) rotate(6deg); } to { transform: translate(70px, -90px) rotate(35deg); opacity: 0; } }
+@keyframes shake { 20%,60% { transform: rotate(-3deg); } 40%,80% { transform: rotate(3deg); } }
+@keyframes burstopen { to { transform: scale(1.25); opacity: 0; filter: brightness(2); } }
+
 .stock { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; margin: 1rem 0; }
 .stock-count { font-size: 1.1rem; }
 .stock-count b { font-size: 1.6rem; color: var(--accent); }
@@ -244,10 +304,12 @@ input, select {
 .shop-text { display: flex; flex-direction: column; gap: .15rem; }
 .shop-text small { color: var(--muted); line-height: 1.3; }
 .shop-text .price { color: var(--accent); font-weight: 700; font-size: .85rem; }
-.pack.mini { width: 54px; height: 76px; border-radius: 8px; flex: none; animation: none; box-shadow: 0 4px 12px rgba(0,0,0,.35), inset 0 0 0 2px rgba(255,255,255,.25); }
-.pack.mini .pack-logo { font-size: 1.6rem; }
-.pack.mini.tiny { width: 36px; height: 50px; border-radius: 6px; }
-.pack.mini.tiny .pack-logo { font-size: 1.05rem; }
+.pack.mini { --h: 80px; --top: 12px; --zz: 5px; width: 56px; animation: none; filter: drop-shadow(0 4px 6px rgba(0,0,0,.4)); }
+.pack.mini:hover { transform: none; }
+.pack.mini .pack-body { border-top-width: 1px; }
+.pack.mini .pack-logo { font-size: 1.5rem; margin-top: -4px; }
+.pack.mini.tiny { --h: 52px; --top: 8px; --zz: 4px; width: 38px; }
+.pack.mini.tiny .pack-logo { font-size: 1rem; }
 .pack-premium .pack-logo, .pack-premium .pack-title { color: #ffe680; }
 
 .reveal-head { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
@@ -304,6 +366,7 @@ input, select {
   .arena { grid-template-columns: 1fr 1fr; }
   .vs { grid-column: 1 / -1; order: -1; font-size: 1.5rem; }
   .card, .slot, .card-back { width: 150px; height: 230px; }
+  .pack:not(.mini) { --h: 270px; --top: 34px; width: 190px; }
   .card-img { height: 90px; }
   .card-desc { display: none; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .8rem; }
