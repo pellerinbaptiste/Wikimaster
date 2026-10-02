@@ -31,4 +31,8 @@ Ouvre `index.html` dans un navigateur, ou publie le dépôt avec GitHub Pages (S
 - **Marché** : achète des cartes à des marchands. Les offres changent toutes les 30 minutes.
 - **Profil** : statistiques, succès, export/import de la sauvegarde.
 
+## Codes secrets
+
+Tape-les n'importe où dans le jeu (sur téléphone : 5 tapes sur le logo). La liste des codes déjà découverts est dans le Profil… les autres sont à trouver !
+
 Inspiré de [WikiMasters](https://www.wiki-masters.com).

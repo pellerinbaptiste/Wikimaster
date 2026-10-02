@@ -248,21 +248,22 @@ async function linkedTitle() {
  * populaire (souvent ultra rare / légendaire) ou une page liée à une page
  * populaire (souvent rare / super rare). Le reste vient de la source du
  * booster : tout Wikipédia ou une catégorie thématique. */
-async function drawCards(n, { luck = 1, cat = null, sure = 0 } = {}) {
+async function drawCards(n, { luck = 1, cat = null, sure = 0, forceTop = 0 } = {}) {
   const special = [];
   let baseNeeded = 0;
   for (let i = 0; i < n; i++) {
     const r = Math.random();
-    if (r < 0.01 * luck) special.push('top');
+    if (i < forceTop) special.push('forced');
+    else if (r < 0.01 * luck) special.push('top');
     else if (i < sure || r < 0.15 * luck) special.push('linked');
     else baseNeeded++;
   }
   const base = n => cat
     ? categoryCards(cat, n).then(c => c.length ? c : randomCards(n))
     : randomCards(n);
-  const titleJobs = special.map(kind => kind === 'top'
-    ? popularTitles().then(t => pick(t.slice(0, 400)))
-    : linkedTitle());
+  const titleJobs = special.map(kind => kind === 'linked'
+    ? linkedTitle()
+    : popularTitles().then(t => pick(t.slice(0, kind === 'forced' ? 80 : 400))));
   const [titles, based] = await Promise.all([
     Promise.allSettled(titleJobs),
     baseNeeded ? base(baseNeeded) : Promise.resolve([]),
@@ -473,12 +474,14 @@ async function openBooster(paid, count = 1) {
   el.classList.add('opening');
   $('#reveal').classList.add('hidden');
   try {
-    const jobs = [takePrefetched()];
+    const forced = state.cheatTop > 0;
+    const jobs = [forced ? drawCards(BOOSTER_SIZE, { ...p, forceTop: 1 }) : takePrefetched()];
     for (let i = 1; i < count; i++) jobs.push(drawCards(BOOSTER_SIZE, p));
     const [packs] = await Promise.all([Promise.all(jobs), sleep(1350)]);
     const ok = packs.filter(cards => cards && cards.length);
     if (!ok.length) throw new Error('vide');
     const n = ok.length;
+    if (forced) state.cheatTop--;
     if (paid) addMoney(-p.price * n); else state.stock -= n;
     state.stats.opened += n;
     state.stats.packs[p.id] = (state.stats.packs[p.id] || 0) + n;
@@ -823,6 +826,7 @@ function renderProfile() {
     ['Meilleure carte', best ? esc(best.t) : '—'],
   ];
   $('#stats').innerHTML = stats.map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
+  renderCheatList();
   $('#achievements').innerHTML = ACHIEVEMENTS.map(a => `
     <div class="ach ${state.achievements[a.id] ? 'done' : ''}">
       <span class="ico">${a.ico}</span><div><b>${esc(a.name)}</b><small>${esc(a.desc)}</small></div>
@@ -861,6 +865,129 @@ $('#reset-save').addEventListener('click', () => {
   renderAll();
   toast('Nouvelle partie commencée.');
 });
+
+// ---------------------------------------------------------------- Codes secrets
+
+/* Tape une combinaison de touches n'importe où dans le jeu.
+ * Sur téléphone : tape 5 fois sur le logo pour saisir un code. */
+const CHEATS = [
+  { id: 'konami', keys: ['arrowup', 'arrowup', 'arrowdown', 'arrowdown', 'arrowleft', 'arrowright', 'arrowleft', 'arrowright', 'b', 'a'],
+    hint: '↑ ↑ ↓ ↓ ← → ← → B A', name: 'Le code Konami', desc: '+1 000 Ƶ, stock plein et arc-en-ciel',
+    run() {
+      addMoney(1000);
+      state.stock = STOCK_MAX;
+      celebrate(5);
+      document.body.classList.add('rainbow');
+      setTimeout(() => document.body.classList.remove('rainbow'), 6000);
+    } },
+  { id: 'zizi', keys: 'zizi', name: 'Pluie de wikizgeg', desc: 'Il pleut des pièces (+100 Ƶ)',
+    run() { coinRain(); addMoney(100); } },
+  { id: 'legende', keys: 'legende', name: 'Destin légendaire', desc: 'Ton prochain booster contient une page ultra célèbre',
+    run() { state.cheatTop = (state.cheatTop || 0) + 1; celebrate(4); } },
+  { id: 'boost', keys: 'boost', name: 'Turbo', desc: 'Stock de boosters gratuits rempli',
+    run() { state.stock = STOCK_MAX; state.lastRegen = now(); celebrate(4); } },
+  { id: 'disco', keys: 'disco', name: 'Disco', desc: 'Les cartes dansent (retape pour arrêter)',
+    run() { document.body.classList.toggle('disco'); } },
+  { id: 'gravite', keys: 'gravite', name: 'Gravité', desc: 'Tout tombe… puis revient',
+    run() { gravity(); } },
+  { id: 'miroir', keys: 'miroir', name: 'Miroir', desc: 'Le monde à l\'envers pendant 5 secondes',
+    run() {
+      document.body.classList.add('mirror');
+      setTimeout(() => document.body.classList.remove('mirror'), 5000);
+    } },
+];
+CHEATS.forEach(c => { if (typeof c.keys === 'string') c.keys = [...c.keys]; });
+
+function activateCheat(c) {
+  state.cheats = state.cheats || {};
+  const first = !state.cheats[c.id];
+  state.cheats[c.id] = (state.cheats[c.id] || 0) + 1;
+  c.run();
+  save();
+  renderStock();
+  renderWallet();
+  cheatBanner(c.name, c.desc);
+  if (first) toast(`🕹️ Code secret découvert : <b>${esc(c.name)}</b>`, 'gold');
+  if (currentView === 'profile') renderProfile();
+}
+
+let keyBuffer = [];
+document.addEventListener('keydown', e => {
+  if (e.target.closest?.('input, select, textarea') || e.ctrlKey || e.metaKey || e.altKey) return;
+  const k = e.key.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (k.length !== 1 && !k.startsWith('arrow')) return;
+  keyBuffer.push(k);
+  keyBuffer = keyBuffer.slice(-20);
+  for (const c of CHEATS) {
+    const tail = keyBuffer.slice(-c.keys.length);
+    if (tail.length === c.keys.length && tail.every((x, i) => x === c.keys[i])) {
+      keyBuffer = [];
+      activateCheat(c);
+      break;
+    }
+  }
+});
+
+// Sur mobile : 5 tapes rapides sur le logo
+let logoTaps = [];
+$('.brand').addEventListener('click', () => {
+  const t = now();
+  logoTaps = [...logoTaps.filter(x => t - x < 2500), t];
+  if (logoTaps.length < 5) return;
+  logoTaps = [];
+  const typed = (prompt('🕹️ Code secret ?') || '').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, '');
+  if (!typed) return;
+  const c = CHEATS.find(c => c.keys.join('') === typed || c.id === typed);
+  if (c) activateCheat(c); else toast('Code inconnu… 🤔', 'bad');
+});
+
+function cheatBanner(title, sub) {
+  document.querySelectorAll('.cheat-banner').forEach(b => b.remove());
+  const el = document.createElement('div');
+  el.className = 'cheat-banner';
+  el.innerHTML = `<small>Code activé</small><b>${esc(title)}</b><span>${esc(sub)}</span>`;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2800);
+}
+
+function coinRain() {
+  const fx = document.createElement('div');
+  fx.className = 'fx';
+  for (let i = 0; i < 70; i++) {
+    const c = document.createElement('i');
+    c.className = 'coin-drop';
+    c.textContent = 'Z';
+    c.style.left = Math.random() * 100 + '%';
+    c.style.animationDelay = Math.random() * 1.2 + 's';
+    c.style.animationDuration = 1.5 + Math.random() * 1.5 + 's';
+    c.style.setProperty('--drift', (Math.random() * 120 - 60) + 'px');
+    fx.appendChild(c);
+  }
+  document.body.appendChild(fx);
+  setTimeout(() => fx.remove(), 4500);
+}
+
+function gravity() {
+  const els = [...document.querySelectorAll('.view.active .card, .view.active .pack, .view.active .shop-item, .view.active .hist, .view.active .stock, .view.active h1, .view.active h2')];
+  els.forEach(el => {
+    el.style.setProperty('--r', (Math.random() * 120 - 60) + 'deg');
+    el.style.animationDelay = Math.random() * 0.4 + 's';
+    el.classList.add('falling');
+  });
+  setTimeout(() => els.forEach(el => {
+    el.classList.remove('falling');
+    el.style.animationDelay = '';
+    el.classList.add('rising');
+    setTimeout(() => el.classList.remove('rising'), 700);
+  }), 2600);
+}
+
+function renderCheatList() {
+  const found = state.cheats || {};
+  $('#cheats').innerHTML = CHEATS.map(c => found[c.id] ? `
+    <div class="ach done"><span class="ico">🕹️</span><div><b>${esc(c.name)}</b><small>${esc(c.hint || c.keys.join('').toUpperCase())} — ${esc(c.desc)}</small></div></div>` : `
+    <div class="ach"><span class="ico">❓</span><div><b>???</b><small>Code encore secret</small></div></div>`).join('');
+}
 
 // ---------------------------------------------------------------- Boucle
 
