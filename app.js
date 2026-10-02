@@ -254,12 +254,66 @@ async function categoryCards(cat, n) {
   return out;
 }
 
+// Pages très célèbres, en dernier recours si les classements de Wikipédia ne répondent pas.
+const FAMOUS = [
+  'France', 'Paris', 'Napoléon Ier', 'Emmanuel Macron', 'Kylian Mbappé', 'Charles de Gaulle', 'Seconde Guerre mondiale',
+  'Première Guerre mondiale', 'Révolution française', 'Louis XIV', 'Victor Hugo', 'Molière', 'Jules César', 'Jeanne d\'Arc',
+  'Albert Einstein', 'Marie Curie', 'Isaac Newton', 'Léonard de Vinci', 'Pablo Picasso', 'Vincent van Gogh', 'Claude Monet',
+  'Wolfgang Amadeus Mozart', 'Ludwig van Beethoven', 'Johnny Hallyday', 'Édith Piaf', 'Michael Jackson', 'The Beatles',
+  'Elvis Presley', 'Zinédine Zidane', 'Lionel Messi', 'Cristiano Ronaldo', 'Michael Jordan', 'Roger Federer', 'Rafael Nadal',
+  'Tour de France', 'Jeux olympiques', 'Coupe du monde de football', 'Paris Saint-Germain Football Club', 'Olympique de Marseille',
+  'Tour Eiffel', 'Château de Versailles', 'Musée du Louvre', 'La Joconde', 'Mont Saint-Michel', 'Notre-Dame de Paris',
+  'États-Unis', 'Royaume-Uni', 'Allemagne', 'Italie', 'Espagne', 'Japon', 'Chine', 'Russie', 'Canada', 'Québec', 'Belgique',
+  'Suisse', 'Brésil', 'Égypte antique', 'Rome antique', 'Grèce antique', 'Empire romain', 'Moyen Âge', 'Renaissance (période)',
+  'Adolf Hitler', 'Joseph Staline', 'Winston Churchill', 'Abraham Lincoln', 'Barack Obama', 'Donald Trump', 'Vladimir Poutine',
+  'Union européenne', 'Organisation des Nations unies', 'Lune', 'Soleil', 'Terre', 'Mars (planète)', 'Système solaire',
+  'Trou noir', 'Big Bang', 'Dinosaures', 'Tyrannosaurus', 'Lion', 'Chat', 'Chien', 'Être humain', 'ADN', 'Covid-19',
+  'Intelligence artificielle', 'Internet', 'Google', 'Apple', 'Microsoft', 'Facebook', 'YouTube', 'Wikipédia', 'Minecraft',
+  'Pokémon', 'Super Mario', 'Nintendo', 'PlayStation', 'Fortnite', 'Harry Potter', 'Star Wars', 'Le Seigneur des anneaux',
+  'Marvel Comics', 'Batman', 'Spider-Man', 'Astérix', 'Tintin', 'One Piece', 'Naruto', 'Dragon Ball', 'Walt Disney Company',
+  'Titanic (film, 1997)', 'Game of Thrones', 'Les Simpson', 'Bible', 'Coran', 'Jésus de Nazareth', 'Bouddhisme', 'Islam',
+  'Christianisme', 'Mathématiques', 'Philosophie', 'Platon', 'Aristote', 'Socrate', 'Jean-Paul Sartre', 'Sigmund Freud',
+  'Charles Darwin', 'Christophe Colomb', 'Cléopâtre VII', 'Alexandre le Grand', 'Gengis Khan', 'Mahatma Gandhi',
+  'Nelson Mandela', 'Martin Luther King', 'Che Guevara', 'Fidel Castro', 'Taylor Swift', 'Beyoncé', 'Rihanna', 'Eminem',
+  'Daft Punk', 'Aya Nakamura', 'Stromae', 'Céline Dion', 'Omar Sy', 'Louis de Funès', 'Jean Dujardin', 'Marion Cotillard',
+];
+
+const NAMESPACE_RE = /^(Spécial|Special|Wikipédia|Fichier|Catégorie|Portail|Aide|Modèle|Utilisateur|Discussion|Projet|Référence|Module|Sujet|MediaWiki|Accueil)( [^:]*)?:|^Accueil$|^-$/;
+
+// Classement officiel Wikimedia des pages les plus vues (un des 3 derniers jours).
+async function restTopViewed() {
+  for (let d = 1; d <= 3; d++) {
+    const date = new Date(now() - d * 86400000);
+    const ymd = [date.getUTCFullYear(), String(date.getUTCMonth() + 1).padStart(2, '0'), String(date.getUTCDate()).padStart(2, '0')].join('/');
+    try {
+      const res = await fetch(`https://wikimedia.org/api/rest_v1/metrics/pageviews/top/fr.wikipedia/all-access/${ymd}`);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const arts = data.items?.[0]?.articles || [];
+      if (arts.length) return arts.map(a => ({ title: a.article.replace(/_/g, ' '), count: a.views || 0 }));
+    } catch (e) { /* on essaie le jour d'avant */ }
+  }
+  return [];
+}
+
 async function popularTitles() {
   if (popular.titles.length && now() - popular.at < POPULAR_TTL) return popular.titles;
-  const data = await api({ list: 'mostviewed', pvimlimit: 500 });
-  const list = (data.query?.mostviewed || [])
-    .filter(p => p.ns === 0 && !/^(Wikipédia|Accueil|Spécial)/.test(p.title));
-  popular = { titles: list.map(p => p.title), counts: new Map(list.map(p => [p.title, p.count || 0])), at: now() };
+  let list = [];
+  try {
+    const data = await api({ list: 'mostviewed', pvimlimit: 500 });
+    list = (data.query?.mostviewed || []).filter(p => p.ns === 0).map(p => ({ title: p.title, count: p.count || 0 }));
+  } catch (e) { /* source suivante */ }
+  if (list.length < 50) {
+    const rest = await restTopViewed();
+    if (rest.length) list = rest;
+  }
+  list = list.filter(p => !NAMESPACE_RE.test(p.title)).slice(0, 500);
+  if (list.length < 50) {
+    // dernier recours : la liste intégrée (on ne la met pas en cache pour retenter les classements plus tard)
+    const famous = FAMOUS.map(title => ({ title, count: 0 }));
+    return [...list.map(p => p.title), ...famous.map(p => p.title)];
+  }
+  popular = { titles: list.map(p => p.title), counts: new Map(list.map(p => [p.title, p.count])), at: now() };
   return popular.titles;
 }
 
