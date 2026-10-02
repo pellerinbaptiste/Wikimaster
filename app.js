@@ -83,7 +83,8 @@ const now = () => Date.now();
 function freshState() {
   return {
     money: 500,
-    stock: 3,
+    stock: STOCK_MAX,   // on commence avec le stock plein
+    welcome10: true,
     lastRegen: now(),
     cards: {},          // pageid -> carte
     market: { offers: [], at: 0 },
@@ -95,6 +96,7 @@ function freshState() {
 }
 
 let state = load();
+save();
 let popular = { titles: [], counts: new Map(), at: 0 };   // non sauvegardé
 
 function load() {
@@ -103,7 +105,10 @@ function load() {
     if (raw) {
       const s = JSON.parse(raw);
       const base = freshState();
-      return { ...base, ...s, stats: { ...base.stats, ...s.stats }, market: s.market || base.market };
+      const merged = { ...base, ...s, stats: { ...base.stats, ...s.stats }, market: s.market || base.market };
+      // Les parties commencées avant le départ à 10 boosters reçoivent une fois le stock plein.
+      if (!s.welcome10) { merged.stock = STOCK_MAX; merged.lastRegen = Date.now(); merged.welcome10 = true; }
+      return merged;
     }
   } catch (e) { /* stockage indisponible : on repart de zéro */ }
   return freshState();
