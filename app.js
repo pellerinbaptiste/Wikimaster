@@ -1,4 +1,4 @@
-/* WikiMaster — un jeu de cartes à collectionner tiré de Wikipédia.
+/* WikiZizi — un jeu de cartes à collectionner tiré de Wikipédia.
  * Tout tourne dans le navigateur : les cartes viennent de l'API publique
  * de fr.wikipedia.org et la partie est sauvegardée dans localStorage. */
 'use strict';
@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------- Config
 
 const API = 'https://fr.wikipedia.org/w/api.php';
-const SAVE_KEY = 'wikimaster.save.v1';
+const SAVE_KEY = 'wikizizi.save.v1';
 
 const REGEN_MS = 10 * 60 * 1000;  // un booster toutes les 10 minutes
 const STOCK_MAX = 10;
@@ -60,7 +60,7 @@ const ACHIEVEMENTS = [
   { id: 'c10',      ico: '📗', name: 'Lecteur curieux',      desc: '10 cartes différentes',            test: s => uniqueCount(s) >= 10 },
   { id: 'c50',      ico: '📘', name: 'Encyclopédiste',       desc: '50 cartes différentes',            test: s => uniqueCount(s) >= 50 },
   { id: 'c150',     ico: '📕', name: 'Bibliothécaire',       desc: '150 cartes différentes',           test: s => uniqueCount(s) >= 150 },
-  { id: 'c500',     ico: '🏛️', name: 'Grand Wikimaster',     desc: '500 cartes différentes',           test: s => uniqueCount(s) >= 500 },
+  { id: 'c500',     ico: '🏛️', name: 'Grand WikiZizi',     desc: '500 cartes différentes',           test: s => uniqueCount(s) >= 500 },
   { id: 'rare',     ico: '🔷', name: 'Ça devient sérieux',   desc: 'Obtenir une carte Rare',           test: s => hasTier(s, 2) },
   { id: 'super',    ico: '💜', name: 'Super !',              desc: 'Obtenir une carte Super rare',     test: s => hasTier(s, 3) },
   { id: 'ultra',    ico: '🔥', name: 'Ultra instinct',       desc: 'Obtenir une carte Ultra rare',     test: s => hasTier(s, 4) },
@@ -69,7 +69,7 @@ const ACHIEVEMENTS = [
   { id: 'open200',  ico: '🏭', name: 'Usine à cartes',       desc: 'Ouvrir 200 boosters',              test: s => s.stats.opened >= 200 },
   { id: 'themes',   ico: '🧭', name: 'Touche-à-tout',        desc: 'Ouvrir un booster de chaque thème', test: s => PACKS.filter(p => p.cat).every(p => s.stats.packs?.[p.id]) },
   { id: 'godpack',  ico: '🌟', name: 'Pack divin',           desc: 'Deux Légendaires dans un même booster', test: s => s.stats.godpack >= 1 },
-  { id: 'rich',     ico: '💰', name: 'Wikibidou-naire',      desc: 'Posséder 1 000 wikibidous',        test: s => s.money >= 1000 },
+  { id: 'rich',     ico: '💰', name: 'Wikizgeg-illionnaire', desc: 'Posséder 5 000 wikizgeg',         test: s => s.money >= 5000 },
   { id: 'trader',   ico: '🏪', name: 'Marchand',             desc: 'Acheter 5 cartes au marché',       test: s => s.stats.bought >= 5 },
 ];
 
@@ -79,7 +79,7 @@ const now = () => Date.now();
 
 function freshState() {
   return {
-    money: 50,
+    money: 500,
     stock: 3,
     lastRegen: now(),
     cards: {},          // pageid -> carte
@@ -297,7 +297,7 @@ function cardHTML(card, opts = {}) {
       <div class="card-desc">${esc(card.x)}</div>
       <div class="card-stats">
         <span class="views">👁 ${compact(card.v)} vues</span>
-        <span class="value">₩${r.sell}</span>
+        <span class="value">Ƶ${r.sell}</span>
       </div>
     </div>`;
 }
@@ -345,6 +345,20 @@ let prefetched = null;   // { id, promise } : le prochain booster, chargé à l'
 const packStyle = p => `--c1:${p.colors[0]};--c2:${p.colors[1]};--c3:${p.colors[2]}`;
 const isFree = p => p.id === 'classique';
 
+// Sachet de booster : languette sertie à déchirer + corps en aluminium.
+function packInner(p, big) {
+  if (!big) return `<span class="pack-top"></span><span class="pack-body"><span class="pack-logo">${esc(p.ico)}</span></span>`;
+  return `
+    <div class="pack-top"><span class="pack-notch">✂ déchirer ici</span></div>
+    <div class="pack-body">
+      <div class="pack-shine"></div>
+      <span class="pack-count">${BOOSTER_SIZE} cartes</span>
+      <div class="pack-emblem"><span class="pack-logo">${esc(p.ico)}</span></div>
+      <div class="pack-band"><div class="pack-kicker">Booster</div><div class="pack-title">${esc(p.name)}</div></div>
+      <div class="pack-sub">WikiZizi · fr.wikipedia.org</div>
+    </div>`;
+}
+
 function tickStock() {
   const t = now();
   if (state.stock >= STOCK_MAX) {
@@ -379,7 +393,7 @@ function renderStock() {
   $('#open-all-btn').classList.toggle('hidden', !free || all < 2);
   $('#open-all-btn').disabled = opening;
   $('#open-all-btn').textContent = `Tout ouvrir (${all})`;
-  $('#buy-booster-btn').textContent = `Acheter et ouvrir · ₩${p.price}`;
+  $('#buy-booster-btn').textContent = `Acheter et ouvrir · Ƶ${p.price}`;
   $('#buy-booster-btn').classList.toggle('primary', !free);
   $('#buy-booster-btn').disabled = opening || state.money < p.price;
   const canOpen = free ? state.stock > 0 || state.money >= p.price : state.money >= p.price;
@@ -391,11 +405,7 @@ function renderSelectedPack() {
   const el = $('#pack');
   el.setAttribute('style', packStyle(p));
   el.className = `pack pack-${p.id}`;
-  el.innerHTML = `
-    <div class="pack-shine"></div>
-    <div class="pack-logo">${esc(p.ico)}</div>
-    <div class="pack-title">Booster<br>${esc(p.name)}</div>
-    <div class="pack-sub">${BOOSTER_SIZE} cartes · fr.wikipedia.org</div>`;
+  el.innerHTML = packInner(p, true);
   $('#pack-name').textContent = `Booster ${p.name}`;
   $('#pack-desc').textContent = p.desc;
   const top = Math.min(1, 0.01 * p.luck), linked = Math.min(1, 0.15 * p.luck) - top;
@@ -407,11 +417,11 @@ const pct = x => (x * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 })
 function renderPackShop() {
   $('#pack-shop').innerHTML = PACKS.map(p => `
     <button class="shop-item ${p.id === selectedPack.id ? 'active' : ''}" data-pack="${p.id}">
-      <span class="pack mini" style="${packStyle(p)}"><span class="pack-logo">${esc(p.ico)}</span></span>
+      <span class="pack mini pack-${p.id}" style="${packStyle(p)}">${packInner(p)}</span>
       <span class="shop-text">
         <b>${esc(p.name)}</b>
         <small>${esc(p.desc)}</small>
-        <span class="price">₩${p.price}${isFree(p) ? ' · ou gratuit avec le stock' : ''}</span>
+        <span class="price">Ƶ${p.price}${isFree(p) ? ' · ou gratuit avec le stock' : ''}</span>
       </span>
     </button>`).join('');
 }
@@ -452,10 +462,10 @@ async function openBooster(paid, count = 1) {
   if (!isFree(p)) paid = true;
   if (!paid && state.stock < count) {
     return toast(state.money >= p.price
-      ? `Plus de booster gratuit. Tu peux en acheter un pour ₩${p.price}.`
+      ? `Plus de booster gratuit. Tu peux en acheter un pour Ƶ${p.price}.`
       : 'Plus de booster en stock. Patiente un peu !', 'bad');
   }
-  if (paid && state.money < p.price * count) return toast('Pas assez de wikibidous.', 'bad');
+  if (paid && state.money < p.price * count) return toast('Pas assez de wikizgeg.', 'bad');
 
   opening = true;
   renderStock();
@@ -465,7 +475,7 @@ async function openBooster(paid, count = 1) {
   try {
     const jobs = [takePrefetched()];
     for (let i = 1; i < count; i++) jobs.push(drawCards(BOOSTER_SIZE, p));
-    const [packs] = await Promise.all([Promise.all(jobs), sleep(900)]);
+    const [packs] = await Promise.all([Promise.all(jobs), sleep(1350)]);
     const ok = packs.filter(cards => cards && cards.length);
     if (!ok.length) throw new Error('vide');
     const n = ok.length;
@@ -584,7 +594,7 @@ function renderHistory() {
     const when = new Date(entry.at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     return `
       <div class="hist">
-        <span class="pack mini tiny" style="${packStyle(p)}"><span class="pack-logo">${esc(p.ico)}</span></span>
+        <span class="pack mini tiny pack-${p.id}" style="${packStyle(p)}">${packInner(p)}</span>
         <div class="hist-main">
           <div><b>${esc(p.name)}</b>${entry.n > 1 ? ` ×${entry.n}` : ''} <span class="muted small">· ${when}</span></div>
           <div class="hist-dots">${entry.cards.map(c => `<span class="dot r-${rarityOf(c).id}" title="${esc(c.t)}"></span>`).join('')}</div>
@@ -602,7 +612,7 @@ $('#history').addEventListener('click', e => {
 $('#rarity-list').innerHTML = RARITIES.map((r, i) => {
   const next = RARITIES[i + 1];
   const range = next ? `${fmt(r.min)} – ${fmt(next.min - 1)} vues` : `${fmt(r.min)}+ vues`;
-  return `<li class="r-${r.id}"><span><span class="dot"></span>${r.name}</span><span class="muted">${range} · vente ₩${r.sell}</span></li>`;
+  return `<li class="r-${r.id}"><span><span class="dot"></span>${r.name}</span><span class="muted">${range} · vente Ƶ${r.sell}</span></li>`;
 }).join('');
 
 function clickPack() {
@@ -664,12 +674,12 @@ $('#sell-dupes').addEventListener('click', () => {
     if (c.n > 1) { gain += (c.n - 1) * rarityOf(c).sell; n += c.n - 1; c.n = 1; }
   }
   if (!n) return;
-  if (!confirm(`Vendre ${n} doublon${n > 1 ? 's' : ''} pour ₩${gain} ?`)) return;
+  if (!confirm(`Vendre ${n} doublon${n > 1 ? 's' : ''} pour Ƶ${gain} ?`)) return;
   state.stats.sold += n;
   addMoney(gain);
   save();
   checkAchievements();
-  toast(`+₩${gain} pour ${n} doublon${n > 1 ? 's' : ''}`, 'good');
+  toast(`+Ƶ${gain} pour ${n} doublon${n > 1 ? 's' : ''}`, 'good');
   renderAlbum();
 });
 
@@ -689,12 +699,12 @@ function openDetail(card, opts = {}) {
         <dl class="kv">
           <dt>Rareté</dt><dd class="r-${r.id}"><span class="dot"></span>${r.name}</dd>
           <dt>Vues (30 jours)</dt><dd>${fmt(card.v)}</dd>
-          <dt>Valeur de revente</dt><dd>₩${r.sell}</dd>
+          <dt>Valeur de revente</dt><dd>Ƶ${r.sell}</dd>
           ${owned ? `<dt>Exemplaires</dt><dd>${owned.n}</dd><dt>Obtenue le</dt><dd>${new Date(owned.at).toLocaleDateString('fr-FR')}</dd>` : ''}
         </dl>
         <div class="row">
           <a class="btn" href="${url}" target="_blank" rel="noopener">Lire sur Wikipédia ↗</a>
-          ${owned && !opts.readOnly ? `<button class="btn" id="sell-one">Vendre 1 · ₩${r.sell}</button>` : ''}
+          ${owned && !opts.readOnly ? `<button class="btn" id="sell-one">Vendre 1 · Ƶ${r.sell}</button>` : ''}
           <button class="btn" id="close-modal">Fermer</button>
         </div>
       </div>
@@ -711,7 +721,7 @@ function openDetail(card, opts = {}) {
     state.stats.sold++;
     addMoney(r.sell);
     save();
-    toast(`+₩${r.sell}`, 'good');
+    toast(`+Ƶ${r.sell}`, 'good');
     closeModal();
     if (currentView === 'album') renderAlbum();
   };
@@ -727,7 +737,7 @@ let marketLoading = false;
 
 async function refreshMarket(paid) {
   if (marketLoading) return;
-  if (paid && state.money < MARKET_REFRESH_PRICE) return toast('Pas assez de wikibidous.', 'bad');
+  if (paid && state.money < MARKET_REFRESH_PRICE) return toast('Pas assez de wikizgeg.', 'bad');
   marketLoading = true;
   $('#market-grid').innerHTML = '<p class="empty"><span class="loader"></span> Les marchands installent leurs étals…</p>';
   try {
@@ -754,7 +764,7 @@ function renderMarket(skipRefresh) {
     <div class="offer ${o.sold ? 'sold' : ''}">
       ${cardHTML(o.card, { hideCount: true })}
       <button class="btn ${o.sold ? '' : 'primary'} small" data-buy="${i}" ${o.sold || state.money < o.price ? 'disabled' : ''}>
-        ${o.sold ? 'Vendu' : `Acheter · ₩${o.price}`}${state.cards[o.card.id] && !o.sold ? ' (déjà possédée)' : ''}
+        ${o.sold ? 'Vendu' : `Acheter · Ƶ${o.price}`}${state.cards[o.card.id] && !o.sold ? ' (déjà possédée)' : ''}
       </button>
     </div>`).join('') : '<p class="empty">Aucune offre pour le moment.</p>';
   updateMarketTimer();
@@ -806,10 +816,10 @@ function renderProfile() {
   const stats = [
     ['Cartes uniques', fmt(cards.length)],
     ['Cartes au total', fmt(cards.reduce((a, c) => a + c.n, 0))],
-    ['Valeur de l\'album', '₩' + fmt(value)],
+    ['Valeur de l\'album', 'Ƶ' + fmt(value)],
     ['Boosters ouverts', fmt(state.stats.opened)],
     ...RARITIES.map((r, i) => [`${r.name}s tirées`, fmt(state.stats.pulls[i] || 0)]),
-    ['Wikibidous gagnés', '₩' + fmt(state.stats.earned)],
+    ['Wikizgeg gagnés', 'Ƶ' + fmt(state.stats.earned)],
     ['Meilleure carte', best ? esc(best.t) : '—'],
   ];
   $('#stats').innerHTML = stats.map(([k, v]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join('');
@@ -823,7 +833,7 @@ $('#export-save').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `wikimaster-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `wikizizi-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 });
