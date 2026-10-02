@@ -53,6 +53,9 @@ const PACKS = [
   { id: 'jv',        name: 'Jeu vidéo',  ico: '🎮', price: 40,  luck: 0.5, cat: 'Portail:Jeu vidéo/Articles liés',
     desc: 'Jeux, consoles et studios.', colors: ['#10240d', '#3ad63a', '#e4ff8a'] },
 ];
+// Booster secret, obtenu uniquement avec un code : que des cartes Ultra rares ou Légendaires.
+PACKS.push({ id: 'legendaire', name: 'Légendaire', ico: '👑', price: 0, luck: 1, elite: true,
+  desc: 'Booster secret : uniquement des cartes Ultra rares et Légendaires.', colors: ['#1a0533', '#7b2ff7', '#ffd23f'] });
 const packById = id => PACKS.find(p => p.id === id) || PACKS[0];
 
 const ACHIEVEMENTS = [
@@ -279,6 +282,19 @@ async function drawCards(n, { luck = 1, cat = null, sure = 0, forceTop = 0 } = {
   return shuffle(cards).slice(0, n);
 }
 
+// Tire n cartes Ultra rares au minimum, parmi les pages les plus vues.
+async function drawEliteCards(n) {
+  const pool = shuffle(await popularTitles());
+  const out = [], seen = new Set();
+  for (let i = 0; out.length < n && i < pool.length && i < 200; i += 20) {
+    for (const c of await detailsForTitles(pool.slice(i, i + 20))) {
+      if (tierOf(c) >= 4 && !seen.has(c.id)) { seen.add(c.id); out.push(c); }
+    }
+  }
+  if (!out.length) throw new Error('aucune carte');
+  return out.slice(0, n);
+}
+
 // ---------------------------------------------------------------- Rendu carte
 
 function cardHTML(card, opts = {}) {
@@ -394,10 +410,12 @@ function renderStock() {
   $('#open-all-btn').classList.toggle('hidden', !free || all < 2);
   $('#open-all-btn').disabled = opening;
   $('#open-all-btn').textContent = `Tout ouvrir (${all})`;
-  $('#buy-booster-btn').textContent = `Acheter et ouvrir · Ƶ${p.price}`;
+  $('#buy-booster-btn').textContent = p.elite
+    ? `Ouvrir le booster légendaire (×${state.legendPacks || 0})`
+    : `Acheter et ouvrir · Ƶ${p.price}`;
   $('#buy-booster-btn').classList.toggle('primary', !free);
-  $('#buy-booster-btn').disabled = opening || state.money < p.price;
-  const canOpen = free ? state.stock > 0 || state.money >= p.price : state.money >= p.price;
+  $('#buy-booster-btn').disabled = opening || (p.elite ? !(state.legendPacks > 0) : state.money < p.price);
+  const canOpen = p.elite ? state.legendPacks > 0 : free ? state.stock > 0 || state.money >= p.price : state.money >= p.price;
   $('#pack').classList.toggle('disabled', opening || !canOpen);
 }
 
@@ -410,19 +428,20 @@ function renderSelectedPack() {
   $('#pack-name').textContent = `Booster ${p.name}`;
   $('#pack-desc').textContent = p.desc;
   const top = Math.min(1, 0.01 * p.luck), linked = Math.min(1, 0.15 * p.luck) - top;
+  if (p.elite) { $('#pack-odds').innerHTML = '<b>100 %</b> de cartes Ultra rares ou Légendaires.'; return; }
   $('#pack-odds').innerHTML = `Par carte : <b>${pct(top)}</b> de chance d'une page très célèbre, <b>${pct(linked)}</b> d'une page connue`
     + (p.sure ? `, et <b>${p.sure}</b> page connue garantie` : '') + '.';
 }
 const pct = x => (x * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' %';
 
 function renderPackShop() {
-  $('#pack-shop').innerHTML = PACKS.map(p => `
+  $('#pack-shop').innerHTML = PACKS.filter(p => !p.elite || state.legendPacks > 0).map(p => `
     <button class="shop-item ${p.id === selectedPack.id ? 'active' : ''}" data-pack="${p.id}">
       <span class="pack mini pack-${p.id}" style="${packStyle(p)}">${packInner(p)}</span>
       <span class="shop-text">
         <b>${esc(p.name)}</b>
         <small>${esc(p.desc)}</small>
-        <span class="price">Ƶ${p.price}${isFree(p) ? ' · ou gratuit avec le stock' : ''}</span>
+        <span class="price">${p.elite ? `×${state.legendPacks} en réserve · gratuit` : `Ƶ${p.price}${isFree(p) ? ' · ou gratuit avec le stock' : ''}`}</span>
       </span>
     </button>`).join('');
 }
@@ -440,6 +459,7 @@ function selectPack(id) {
 
 function prefetchBooster() {
   const p = selectedPack;
+  if (p.elite) return;
   if (prefetched && prefetched.id === p.id) return;
   const entry = { id: p.id };
   entry.promise = drawCards(BOOSTER_SIZE, p).catch(() => {
@@ -460,13 +480,14 @@ function takePrefetched() {
 async function openBooster(paid, count = 1) {
   if (opening) return;
   const p = selectedPack;
+  if (p.elite && !(state.legendPacks > 0)) return toast('Plus de booster légendaire… il faut le code secret !', 'bad');
   if (!isFree(p)) paid = true;
   if (!paid && state.stock < count) {
     return toast(state.money >= p.price
       ? `Plus de booster gratuit. Tu peux en acheter un pour Ƶ${p.price}.`
       : 'Plus de booster en stock. Patiente un peu !', 'bad');
   }
-  if (paid && state.money < p.price * count) return toast('Pas assez de wikizgeg.', 'bad');
+  if (!p.elite && paid && state.money < p.price * count) return toast('Pas assez de wikizgeg.', 'bad');
 
   opening = true;
   renderStock();
@@ -474,15 +495,16 @@ async function openBooster(paid, count = 1) {
   el.classList.add('opening');
   $('#reveal').classList.add('hidden');
   try {
-    const forced = state.cheatTop > 0;
-    const jobs = [forced ? drawCards(BOOSTER_SIZE, { ...p, forceTop: 1 }) : takePrefetched()];
+    const forced = !p.elite && state.cheatTop > 0;
+    const jobs = [p.elite ? drawEliteCards(BOOSTER_SIZE) : forced ? drawCards(BOOSTER_SIZE, { ...p, forceTop: 1 }) : takePrefetched()];
     for (let i = 1; i < count; i++) jobs.push(drawCards(BOOSTER_SIZE, p));
     const [packs] = await Promise.all([Promise.all(jobs), sleep(1350)]);
     const ok = packs.filter(cards => cards && cards.length);
     if (!ok.length) throw new Error('vide');
     const n = ok.length;
     if (forced) state.cheatTop--;
-    if (paid) addMoney(-p.price * n); else state.stock -= n;
+    if (p.elite) state.legendPacks--;
+    else if (paid) addMoney(-p.price * n); else state.stock -= n;
     state.stats.opened += n;
     state.stats.packs[p.id] = (state.stats.packs[p.id] || 0) + n;
     if (ok.some(cards => cards.filter(c => tierOf(c) === 5).length >= 2)) state.stats.godpack++;
@@ -562,11 +584,13 @@ function finishReveal(cards, pack, nPacks) {
   opening = false;
   renderStock();
   renderHistory();
+  renderPackShop();
   $('#reveal-all').classList.add('hidden');
   $('#reveal-hint').textContent = newOnes
     ? `${newOnes} nouvelle${newOnes > 1 ? 's' : ''} carte${newOnes > 1 ? 's' : ''} pour ton album !`
     : 'Que des doublons… tu peux les revendre dans l\'album.';
   $('#reveal-done').classList.remove('hidden');
+  if (pack.elite && !(state.legendPacks > 0)) selectPack('classique');
 }
 
 // Flash + confettis pour les cartes ultra rares et légendaires.
@@ -895,6 +919,16 @@ const CHEATS = [
       document.body.classList.add('mirror');
       setTimeout(() => document.body.classList.remove('mirror'), 5000);
     } },
+  { id: 'legendpack', keys: 'pwoxicuvybtnr,e;a:a=', hint: 'pwoxicuvybtnr,e;a:a=', name: 'Booster légendaire', desc: 'Un booster secret rempli d\'Ultra rares et de Légendaires',
+    run() {
+      state.legendPacks = (state.legendPacks || 0) + 1;
+      celebrate(5);
+      document.body.classList.add('rainbow');
+      setTimeout(() => document.body.classList.remove('rainbow'), 3000);
+      show('boosters');
+      selectPack('legendaire');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } },
 ];
 CHEATS.forEach(c => { if (typeof c.keys === 'string') c.keys = [...c.keys]; });
 
@@ -917,7 +951,7 @@ document.addEventListener('keydown', e => {
   const k = e.key.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   if (k.length !== 1 && !k.startsWith('arrow')) return;
   keyBuffer.push(k);
-  keyBuffer = keyBuffer.slice(-20);
+  keyBuffer = keyBuffer.slice(-40);
   for (const c of CHEATS) {
     const tail = keyBuffer.slice(-c.keys.length);
     if (tail.length === c.keys.length && tail.every((x, i) => x === c.keys[i])) {
