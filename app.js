@@ -919,7 +919,7 @@ const CHEATS = [
       document.body.classList.add('mirror');
       setTimeout(() => document.body.classList.remove('mirror'), 5000);
     } },
-  { id: 'legendpack', keys: 'pwoxicuvybtnr,e;a:a=', hint: 'pwoxicuvybtnr,e;a:a=', name: 'Booster légendaire', desc: 'Un booster secret rempli d\'Ultra rares et de Légendaires',
+  { id: 'legendpack', keys: 'aetuoqdgjlwcb', hint: 'aetuoqdgjlwcb', name: 'Booster légendaire', desc: 'Un booster secret rempli d\'Ultra rares et de Légendaires',
     run() {
       state.legendPacks = (state.legendPacks || 0) + 1;
       celebrate(5);
