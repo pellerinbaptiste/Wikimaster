@@ -95,7 +95,7 @@ function freshState() {
 }
 
 let state = load();
-let popular = { titles: [], at: 0 };   // non sauvegardé
+let popular = { titles: [], counts: new Map(), at: 0 };   // non sauvegardé
 
 function load() {
   try {
@@ -184,32 +184,58 @@ function toCard(p) {
   const extract = (p.extract || '').replace(/\s+/g, ' ').trim();
   if (extract.length < 40) return null;
   if (!p.thumbnail) return null;   // chaque carte doit avoir une image
-  const v = Object.values(p.pageviews || {}).reduce((a, b) => a + (b || 0), 0);
+  let v = Object.values(p.pageviews || {}).reduce((a, b) => a + (b || 0), 0);
+  // vues absentes : on estime à partir du classement des pages les plus vues (vues d'un jour × 30)
+  if (!v && popular.counts.has(p.title)) v = popular.counts.get(p.title) * 30;
   return {
     id: p.pageid,
     t: p.title,
     x: extract.length > 900 ? extract.slice(0, 900).replace(/\s\S*$/, '') + '…' : extract,
-    img: p.thumbnail ? p.thumbnail.source : '',
+    img: p.thumbnail.source,
     v,
     len: p.length || 0,
   };
 }
 
+/* Récupère le détail de pages (titres ou ids). L'API peut renvoyer les vues,
+ * extraits ou images en plusieurs fois (« continue ») : on suit la suite et
+ * on fusionne, sinon des pages très vues passeraient pour des communes. */
+async function fetchDetails(sel) {
+  const pages = new Map();
+  let cont = {};
+  for (let i = 0; i < 10; i++) {
+    const data = await api({ ...DETAIL_PARAMS, ...sel, ...cont });
+    for (const p of data.query?.pages || []) {
+      const key = p.pageid ?? p.title;
+      const prev = pages.get(key);
+      if (!prev) { pages.set(key, p); continue; }
+      for (const [k, v] of Object.entries(p)) {
+        if (k === 'pageviews' && prev.pageviews) Object.assign(prev.pageviews, v);
+        else if (prev[k] === undefined) prev[k] = v;
+      }
+    }
+    if (!data.continue) break;
+    cont = data.continue;
+  }
+  return [...pages.values()].map(toCard).filter(Boolean);
+}
+
 async function detailsForTitles(titles) {
   const out = [];
   // les extraits sont limités à 20 pages par requête
-  for (let i = 0; i < titles.length; i += 20) {
-    const data = await api({ ...DETAIL_PARAMS, titles: titles.slice(i, i + 20).join('|') });
-    out.push(...(data.query?.pages || []).map(toCard).filter(Boolean));
-  }
+  for (let i = 0; i < titles.length; i += 20) out.push(...await fetchDetails({ titles: titles.slice(i, i + 20).join('|') }));
   return out;
+}
+
+async function detailsForIds(ids) {
+  return ids.length ? fetchDetails({ pageids: ids.slice(0, 20).join('|') }) : [];
 }
 
 async function randomCards(n) {
   const out = [];
   for (let guard = 0; out.length < n && guard < Math.ceil(n / 6) + 3; guard++) {
-    const data = await api({ ...DETAIL_PARAMS, generator: 'random', grnnamespace: 0, grnlimit: 20 });
-    out.push(...(data.query?.pages || []).map(toCard).filter(Boolean));
+    const data = await api({ list: 'random', rnnamespace: 0, rnlimit: 20 });
+    out.push(...await detailsForIds((data.query?.random || []).map(r => r.id)));
   }
   return out;
 }
@@ -219,12 +245,11 @@ async function categoryCards(cat, n) {
   const out = [];
   for (let guard = 0; out.length < n && guard < Math.ceil(n / 6) + 3; guard++) {
     const data = await api({
-      ...DETAIL_PARAMS, generator: 'search', gsrsearch: `incategory:"${cat}"`,
-      gsrsort: 'random', gsrnamespace: 0, gsrlimit: 20,
+      list: 'search', srsearch: `incategory:"${cat}"`, srsort: 'random', srnamespace: 0, srlimit: 20, srprop: '',
     });
-    const pages = (data.query?.pages || []).map(toCard).filter(Boolean);
-    if (!pages.length) break;
-    out.push(...pages);
+    const ids = (data.query?.search || []).map(r => r.pageid);
+    if (!ids.length) break;
+    out.push(...await detailsForIds(ids));
   }
   return out;
 }
@@ -232,11 +257,10 @@ async function categoryCards(cat, n) {
 async function popularTitles() {
   if (popular.titles.length && now() - popular.at < POPULAR_TTL) return popular.titles;
   const data = await api({ list: 'mostviewed', pvimlimit: 500 });
-  const titles = (data.query?.mostviewed || [])
-    .filter(p => p.ns === 0 && !/^(Wikipédia|Accueil|Spécial)/.test(p.title) && p.title !== 'Wikipédia:Accueil principal')
-    .map(p => p.title);
-  popular = { titles, at: now() };
-  return titles;
+  const list = (data.query?.mostviewed || [])
+    .filter(p => p.ns === 0 && !/^(Wikipédia|Accueil|Spécial)/.test(p.title));
+  popular = { titles: list.map(p => p.title), counts: new Map(list.map(p => [p.title, p.count || 0])), at: now() };
+  return popular.titles;
 }
 
 // Carte « moyenne » : une page liée depuis une page populaire.
@@ -285,13 +309,14 @@ async function drawCards(n, { luck = 1, cat = null, sure = 0, forceTop = 0 } = {
 // Tire n cartes Ultra rares au minimum, parmi les pages les plus vues.
 async function drawEliteCards(n) {
   const pool = shuffle(await popularTitles());
+  if (!pool.length) throw new Error('classement des pages les plus vues indisponible');
   const out = [], seen = new Set();
-  for (let i = 0; out.length < n && i < pool.length && i < 200; i += 20) {
+  for (let i = 0; out.length < n && i < pool.length && i < 300; i += 20) {
     for (const c of await detailsForTitles(pool.slice(i, i + 20))) {
       if (tierOf(c) >= 4 && !seen.has(c.id)) { seen.add(c.id); out.push(c); }
     }
   }
-  if (!out.length) throw new Error('aucune carte');
+  if (out.length < n) throw new Error(`seulement ${out.length} carte(s) ultra rare(s) trouvée(s)`);
   return out.slice(0, n);
 }
 
@@ -513,7 +538,7 @@ async function openBooster(paid, count = 1) {
     prefetchBooster();
   } catch (e) {
     console.error(e);
-    toast('Impossible de joindre Wikipédia. Vérifie ta connexion et réessaie.', 'bad');
+    toast(`Le booster n'a pas pu être ouvert (${esc(e.message)}). Il n'est pas perdu, réessaie !`, 'bad');
     opening = false;
   } finally {
     el.classList.remove('opening');
