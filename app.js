@@ -169,7 +169,7 @@ async function api(params) {
 const DETAIL_PARAMS = {
   prop: 'extracts|pageimages|pageviews|info|pageprops',
   exintro: 1, explaintext: 1, exlimit: 'max',
-  piprop: 'thumbnail', pithumbsize: 400, pilimit: 'max',
+  piprop: 'thumbnail', pithumbsize: 400, pilimit: 'max', pilicense: 'any',
   pvipdays: 30,
   ppprop: 'disambiguation',
   redirects: 1,
@@ -180,6 +180,7 @@ function toCard(p) {
   if (p.pageprops && 'disambiguation' in p.pageprops) return null;
   const extract = (p.extract || '').replace(/\s+/g, ' ').trim();
   if (extract.length < 40) return null;
+  if (!p.thumbnail) return null;   // chaque carte doit avoir une image
   const v = Object.values(p.pageviews || {}).reduce((a, b) => a + (b || 0), 0);
   return {
     id: p.pageid,
@@ -203,8 +204,8 @@ async function detailsForTitles(titles) {
 
 async function randomCards(n) {
   const out = [];
-  for (let guard = 0; out.length < n && guard < Math.ceil(n / 14) + 2; guard++) {
-    const data = await api({ ...DETAIL_PARAMS, generator: 'random', grnnamespace: 0, grnlimit: Math.min(20, n - out.length + 4) });
+  for (let guard = 0; out.length < n && guard < Math.ceil(n / 6) + 3; guard++) {
+    const data = await api({ ...DETAIL_PARAMS, generator: 'random', grnnamespace: 0, grnlimit: 20 });
     out.push(...(data.query?.pages || []).map(toCard).filter(Boolean));
   }
   return out;
@@ -213,10 +214,10 @@ async function randomCards(n) {
 // Pages au hasard dans une catégorie (tri aléatoire de la recherche Wikipédia).
 async function categoryCards(cat, n) {
   const out = [];
-  for (let guard = 0; out.length < n && guard < Math.ceil(n / 14) + 2; guard++) {
+  for (let guard = 0; out.length < n && guard < Math.ceil(n / 6) + 3; guard++) {
     const data = await api({
       ...DETAIL_PARAMS, generator: 'search', gsrsearch: `incategory:"${cat}"`,
-      gsrsort: 'random', gsrnamespace: 0, gsrlimit: Math.min(20, n - out.length + 4),
+      gsrsort: 'random', gsrnamespace: 0, gsrlimit: 20,
     });
     const pages = (data.query?.pages || []).map(toCard).filter(Boolean);
     if (!pages.length) break;

@@ -24,6 +24,7 @@ Ouvre `index.html` dans un navigateur, ou publie le dépôt avec GitHub Pages (S
   | Ultra rare  | 5 000 – 19 999  | ₩40     |
   | Légendaire  | 20 000 et plus  | ₩120    |
 
+- **Images** : chaque carte a l'image de son article (les pages sans image ne sont jamais tirées).
 - **Album** : filtre, trie, consulte et revends tes cartes (ou tous tes doublons d'un coup).
 - **Marché** : achète des cartes à des marchands. Les offres changent toutes les 30 minutes.
 - **Profil** : statistiques, succès, export/import de la sauvegarde.
