@@ -4,7 +4,7 @@ Un jeu de cartes à collectionner où chaque carte est un vrai article de Wikip�
 
 ## Jouer
 
-On commence avec 500 wikizgeg (Ƶ), la monnaie du jeu.
+On commence avec 500 wikizgeg (Ƶ), la monnaie du jeu, et 10 boosters gratuits.
 
 Ouvre `index.html` dans un navigateur, ou publie le dépôt avec GitHub Pages (Settings → Pages → branche `main`, dossier `/`). Aucune installation ni serveur nécessaire : les cartes viennent de l'API publique de `fr.wikipedia.org` et la partie est sauvegardée dans le navigateur.
 
