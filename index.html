@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WikiMaster</title>
+  <meta name="description" content="Collectionne les pages de Wikipédia sous forme de cartes, ouvre des boosters et affronte l'IA en duel de quiz.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🃏</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">W</span>
+      <span class="brand-name">Wiki<b>Master</b></span>
+    </div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-view="boosters">🎁 <span>Boosters</span></button>
+      <button class="tab" data-view="album">📚 <span>Album</span></button>
+      <button class="tab" data-view="duel">⚔️ <span>Duel</span></button>
+      <button class="tab" data-view="market">🏪 <span>Marché</span></button>
+      <button class="tab" data-view="profile">👤 <span>Profil</span></button>
+    </nav>
+    <div class="wallet" title="Wikibidous">
+      <span class="coin">₩</span><span id="wallet">0</span>
+    </div>
+  </header>
+
+  <main>
+    <!-- BOOSTERS -->
+    <section id="view-boosters" class="view active">
+      <div class="booster-hero">
+        <div class="pack" id="pack" tabindex="0" role="button" aria-label="Ouvrir un booster">
+          <div class="pack-shine"></div>
+          <div class="pack-logo">W</div>
+          <div class="pack-title">Booster<br>Wikipédia</div>
+          <div class="pack-sub">5 cartes · fr.wikipedia.org</div>
+        </div>
+        <div class="booster-info">
+          <h1>Ouvre tes boosters</h1>
+          <p class="muted">Chaque carte est un vrai article de Wikipédia. Sa rareté dépend du nombre de visites de la page sur les 30 derniers jours.</p>
+          <div class="stock">
+            <div class="stock-count"><b id="stock">0</b> / <span id="stock-max">10</span> boosters</div>
+            <div class="stock-bar"><div id="stock-bar-fill"></div></div>
+            <div class="muted small" id="stock-timer">—</div>
+          </div>
+          <div class="row">
+            <button class="btn primary" id="open-btn">Ouvrir un booster</button>
+            <button class="btn" id="buy-booster-btn">Acheter un booster · ₩<span id="booster-price">25</span></button>
+          </div>
+          <details class="rarity-legend">
+            <summary>Table des raretés</summary>
+            <ul id="rarity-list"></ul>
+          </details>
+        </div>
+      </div>
+      <div id="reveal" class="reveal hidden">
+        <p class="muted center" id="reveal-hint">Clique sur les cartes pour les retourner</p>
+        <div class="reveal-row" id="reveal-row"></div>
+        <div class="center"><button class="btn primary hidden" id="reveal-done">Ajouter à l'album</button></div>
+      </div>
+    </section>
+
+    <!-- ALBUM -->
+    <section id="view-album" class="view">
+      <div class="toolbar">
+        <h1>Mon album <span class="muted" id="album-count"></span></h1>
+        <div class="filters">
+          <input type="search" id="album-search" placeholder="Rechercher une page…">
+          <select id="album-rarity"><option value="">Toutes raretés</option></select>
+          <select id="album-sort">
+            <option value="rarity">Tri : rareté</option>
+            <option value="views">Tri : vues</option>
+            <option value="recent">Tri : récentes</option>
+            <option value="alpha">Tri : A → Z</option>
+            <option value="dupes">Tri : doublons</option>
+          </select>
+          <button class="btn small" id="sell-dupes">Vendre tous les doublons</button>
+        </div>
+      </div>
+      <div class="rarity-progress" id="rarity-progress"></div>
+      <div class="grid" id="album-grid"></div>
+      <p class="empty hidden" id="album-empty">Ton album est vide. Ouvre un booster pour commencer ta collection !</p>
+    </section>
+
+    <!-- DUEL -->
+    <section id="view-duel" class="view">
+      <div id="duel-setup">
+        <h1>Duel de quiz</h1>
+        <p class="muted">Choisis 3 cartes. À chaque manche, une question est tirée de la page Wikipédia de ta carte. Bonne réponse : tu attaques avec ton ATK. Mauvaise réponse : tu te blesses. L'IA joue de la même façon avec ses cartes.</p>
+        <div class="deck-slots" id="deck-slots"></div>
+        <div class="row">
+          <button class="btn primary" id="duel-start" disabled>Lancer le duel</button>
+          <button class="btn" id="duel-auto">Deck auto (meilleures cartes)</button>
+          <label class="muted small">Difficulté IA
+            <select id="duel-level">
+              <option value="0.45">Facile</option>
+              <option value="0.62" selected>Normal</option>
+              <option value="0.8">Difficile</option>
+            </select>
+          </label>
+        </div>
+        <div class="grid compact" id="duel-pick"></div>
+        <p class="empty hidden" id="duel-empty">Il te faut au moins 3 cartes pour jouer un duel.</p>
+      </div>
+      <div id="duel-arena" class="hidden">
+        <div class="arena">
+          <div class="side me">
+            <div class="who">Toi</div>
+            <div class="hp"><div class="hp-fill" id="hp-me"></div><span id="hp-me-txt"></span></div>
+            <div id="arena-me"></div>
+          </div>
+          <div class="vs">VS<div class="round" id="duel-round"></div></div>
+          <div class="side bot">
+            <div class="who">IA</div>
+            <div class="hp"><div class="hp-fill" id="hp-bot"></div><span id="hp-bot-txt"></span></div>
+            <div id="arena-bot"></div>
+          </div>
+        </div>
+        <div class="question" id="question"></div>
+        <ol class="log" id="duel-log"></ol>
+      </div>
+    </section>
+
+    <!-- MARKET -->
+    <section id="view-market" class="view">
+      <div class="toolbar">
+        <h1>Marché</h1>
+        <div class="muted small">Nouvelles offres dans <b id="market-timer">—</b> <button class="btn small" id="market-refresh">Rafraîchir · ₩10</button></div>
+      </div>
+      <p class="muted">Des collectionneurs vendent leurs cartes. Les prix dépendent de la rareté.</p>
+      <div class="grid" id="market-grid"></div>
+    </section>
+
+    <!-- PROFILE -->
+    <section id="view-profile" class="view">
+      <h1>Profil</h1>
+      <div class="stats" id="stats"></div>
+      <h2>Succès</h2>
+      <div class="achievements" id="achievements"></div>
+      <h2>Sauvegarde</h2>
+      <div class="row">
+        <button class="btn" id="export-save">Exporter</button>
+        <button class="btn" id="import-save">Importer</button>
+        <button class="btn danger" id="reset-save">Tout recommencer</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal hidden" id="modal" role="dialog" aria-modal="true">
+    <div class="modal-box" id="modal-box"></div>
+  </div>
+  <div class="toasts" id="toasts"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
