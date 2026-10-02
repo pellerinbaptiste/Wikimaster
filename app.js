@@ -11,7 +11,8 @@ const SAVE_KEY = 'wikimaster.save.v1';
 const REGEN_MS = 10 * 60 * 1000;  // un booster toutes les 10 minutes
 const STOCK_MAX = 10;
 const BOOSTER_SIZE = 5;
-const BOOSTER_PRICE = 25;
+const MULTI_MAX = 10;              // « Tout ouvrir » ouvre au plus 10 boosters
+const HISTORY_MAX = 15;
 const MARKET_TTL = 30 * 60 * 1000;
 const MARKET_REFRESH_PRICE = 10;
 const POPULAR_TTL = 6 * 60 * 60 * 1000;
@@ -19,12 +20,40 @@ const POPULAR_TTL = 6 * 60 * 60 * 1000;
 // Rareté selon le nombre de vues de la page sur 30 jours.
 const RARITIES = [
   { id: 'commune',      name: 'Commune',      min: 0,     sell: 1 },
-  { id: 'peu-commune',  name: 'Peu commune',  min: 50,    sell: 3 },
-  { id: 'rare',         name: 'Rare',         min: 200,   sell: 8 },
-  { id: 'super-rare',   name: 'Super rare',   min: 1000,  sell: 25 },
-  { id: 'ultra-rare',   name: 'Ultra rare',   min: 5000,  sell: 80 },
-  { id: 'legendaire',   name: 'Légendaire',   min: 20000, sell: 300 },
+  { id: 'peu-commune',  name: 'Peu commune',  min: 50,    sell: 2 },
+  { id: 'rare',         name: 'Rare',         min: 200,   sell: 5 },
+  { id: 'super-rare',   name: 'Super rare',   min: 1000,  sell: 15 },
+  { id: 'ultra-rare',   name: 'Ultra rare',   min: 5000,  sell: 40 },
+  { id: 'legendaire',   name: 'Légendaire',   min: 20000, sell: 120 },
 ];
+
+/* Types de boosters.
+ * luck : multiplie les chances qu'un emplacement soit une page populaire
+ *        (souvent ultra rare / légendaire) ou une page liée à une page
+ *        populaire (souvent rare / super rare).
+ * cat  : catégorie Wikipédia d'où viennent les pages (boosters thématiques).
+ * sure : nombre d'emplacements garantis « page liée à une page populaire ». */
+const PACKS = [
+  { id: 'classique', name: 'Classique',  ico: 'W',  price: 25,  luck: 1,
+    desc: '5 pages tirées au hasard dans tout Wikipédia.', colors: ['#7c6cff', '#ff5dc8', '#ffcc4d'] },
+  { id: 'premium',   name: 'Premium',    ico: '★',  price: 100, luck: 3, sure: 1,
+    desc: 'Beaucoup plus de pages célèbres. Une carte « connue » garantie.', colors: ['#1a1405', '#b8860b', '#ffe680'] },
+  { id: 'histoire',  name: 'Histoire',   ico: '🏛️', price: 40,  luck: 0.5, cat: 'Portail:Histoire/Articles liés',
+    desc: 'Rois, batailles, empires et révolutions.', colors: ['#5a2d0c', '#b5651d', '#f3d29b'] },
+  { id: 'sciences',  name: 'Sciences',   ico: '🔬', price: 40,  luck: 0.5, cat: 'Portail:Sciences/Articles liés',
+    desc: 'Physique, chimie, biologie, mathématiques…', colors: ['#063a4f', '#0f8bb3', '#8ff0ff'] },
+  { id: 'geo',       name: 'Géographie', ico: '🌍', price: 40,  luck: 0.5, cat: 'Portail:Géographie/Articles liés',
+    desc: 'Pays, villes, fleuves et montagnes.', colors: ['#0b3d1e', '#1f9d55', '#b8f5c9'] },
+  { id: 'sport',     name: 'Sport',      ico: '⚽', price: 40,  luck: 0.5, cat: 'Portail:Sport/Articles liés',
+    desc: 'Athlètes, clubs et compétitions.', colors: ['#4a0b0b', '#d63a3a', '#ffc2a8'] },
+  { id: 'arts',      name: 'Arts',       ico: '🎨', price: 40,  luck: 0.5, cat: 'Portail:Arts/Articles liés',
+    desc: 'Peintres, œuvres, musées et courants.', colors: ['#3b0b4a', '#a83ad6', '#ffb8f0'] },
+  { id: 'musique',   name: 'Musique',    ico: '🎵', price: 40,  luck: 0.5, cat: 'Portail:Musique/Articles liés',
+    desc: 'Artistes, albums, instruments et genres.', colors: ['#0d1440', '#3a55d6', '#a8d8ff'] },
+  { id: 'jv',        name: 'Jeu vidéo',  ico: '🎮', price: 40,  luck: 0.5, cat: 'Portail:Jeu vidéo/Articles liés',
+    desc: 'Jeux, consoles et studios.', colors: ['#10240d', '#3ad63a', '#e4ff8a'] },
+];
+const packById = id => PACKS.find(p => p.id === id) || PACKS[0];
 
 const ACHIEVEMENTS = [
   { id: 'first',    ico: '🎁', name: 'Premier booster',      desc: 'Ouvrir ton premier booster',       test: s => s.stats.opened >= 1 },
@@ -36,18 +65,12 @@ const ACHIEVEMENTS = [
   { id: 'super',    ico: '💜', name: 'Super !',              desc: 'Obtenir une carte Super rare',     test: s => hasTier(s, 3) },
   { id: 'ultra',    ico: '🔥', name: 'Ultra instinct',       desc: 'Obtenir une carte Ultra rare',     test: s => hasTier(s, 4) },
   { id: 'legend',   ico: '👑', name: 'Légende vivante',      desc: 'Obtenir une carte Légendaire',     test: s => hasTier(s, 5) },
-  { id: 'duel1',    ico: '⚔️', name: 'Premier sang',         desc: 'Gagner un duel',                   test: s => s.stats.wins >= 1 },
-  { id: 'duel10',   ico: '🏆', name: 'Champion du savoir',   desc: 'Gagner 10 duels',                  test: s => s.stats.wins >= 10 },
-  { id: 'perfect',  ico: '🧠', name: 'Sans faute',           desc: 'Gagner un duel sans erreur',       test: s => s.stats.perfect >= 1 },
+  { id: 'open50',   ico: '📦', name: 'Accro aux boosters',   desc: 'Ouvrir 50 boosters',               test: s => s.stats.opened >= 50 },
+  { id: 'open200',  ico: '🏭', name: 'Usine à cartes',       desc: 'Ouvrir 200 boosters',              test: s => s.stats.opened >= 200 },
+  { id: 'themes',   ico: '🧭', name: 'Touche-à-tout',        desc: 'Ouvrir un booster de chaque thème', test: s => PACKS.filter(p => p.cat).every(p => s.stats.packs?.[p.id]) },
+  { id: 'godpack',  ico: '🌟', name: 'Pack divin',           desc: 'Deux Légendaires dans un même booster', test: s => s.stats.godpack >= 1 },
   { id: 'rich',     ico: '💰', name: 'Wikibidou-naire',      desc: 'Posséder 1 000 wikibidous',        test: s => s.money >= 1000 },
   { id: 'trader',   ico: '🏪', name: 'Marchand',             desc: 'Acheter 5 cartes au marché',       test: s => s.stats.bought >= 5 },
-];
-
-// Titres de secours pour les questions quand l'album est encore petit.
-const FALLBACK_TITLES = [
-  'Tour Eiffel', 'Napoléon Ier', 'Photosynthèse', 'Jazz', 'Volcan', 'Rome antique', 'Marie Curie',
-  'Baleine bleue', 'Échecs', 'Mont Blanc', 'Révolution française', 'Croissant (viennoiserie)',
-  'Système solaire', 'Victor Hugo', 'Football', 'Amazonie', 'Pyramides de Gizeh', 'Internet',
 ];
 
 // ---------------------------------------------------------------- State
@@ -61,7 +84,9 @@ function freshState() {
     lastRegen: now(),
     cards: {},          // pageid -> carte
     market: { offers: [], at: 0 },
-    stats: { opened: 0, wins: 0, losses: 0, draws: 0, perfect: 0, sold: 0, bought: 0, earned: 0 },
+    stats: { opened: 0, sold: 0, bought: 0, earned: 0, godpack: 0, packs: {}, pulls: [0, 0, 0, 0, 0, 0] },
+    history: [],
+    pack: 'classique',
     achievements: {},
   };
 }
@@ -109,14 +134,6 @@ function tierOf(card) {
   return t;
 }
 const rarityOf = card => RARITIES[tierOf(card)];
-
-function statsOf(card) {
-  const t = tierOf(card);
-  const h = hash(card.t);
-  const atk = 10 + t * 6 + Math.floor(Math.log10(card.v + 1) * 4) + (h % 6);
-  const def = 6 + t * 4 + Math.min(15, Math.floor((card.len || 0) / 6000)) + ((h >> 4) % 5);
-  return { atk, def };
-}
 
 function toast(msg, kind = '') {
   const el = document.createElement('div');
@@ -175,14 +192,37 @@ function toCard(p) {
 }
 
 async function detailsForTitles(titles) {
-  if (!titles.length) return [];
-  const data = await api({ ...DETAIL_PARAMS, titles: titles.slice(0, 50).join('|') });
-  return (data.query?.pages || []).map(toCard).filter(Boolean);
+  const out = [];
+  // les extraits sont limités à 20 pages par requête
+  for (let i = 0; i < titles.length; i += 20) {
+    const data = await api({ ...DETAIL_PARAMS, titles: titles.slice(i, i + 20).join('|') });
+    out.push(...(data.query?.pages || []).map(toCard).filter(Boolean));
+  }
+  return out;
 }
 
 async function randomCards(n) {
-  const data = await api({ ...DETAIL_PARAMS, generator: 'random', grnnamespace: 0, grnlimit: Math.min(20, n + 4) });
-  return (data.query?.pages || []).map(toCard).filter(Boolean);
+  const out = [];
+  for (let guard = 0; out.length < n && guard < Math.ceil(n / 14) + 2; guard++) {
+    const data = await api({ ...DETAIL_PARAMS, generator: 'random', grnnamespace: 0, grnlimit: Math.min(20, n - out.length + 4) });
+    out.push(...(data.query?.pages || []).map(toCard).filter(Boolean));
+  }
+  return out;
+}
+
+// Pages au hasard dans une catégorie (tri aléatoire de la recherche Wikipédia).
+async function categoryCards(cat, n) {
+  const out = [];
+  for (let guard = 0; out.length < n && guard < Math.ceil(n / 14) + 2; guard++) {
+    const data = await api({
+      ...DETAIL_PARAMS, generator: 'search', gsrsearch: `incategory:"${cat}"`,
+      gsrsort: 'random', gsrnamespace: 0, gsrlimit: Math.min(20, n - out.length + 4),
+    });
+    const pages = (data.query?.pages || []).map(toCard).filter(Boolean);
+    if (!pages.length) break;
+    out.push(...pages);
+  }
+  return out;
 }
 
 async function popularTitles() {
@@ -205,40 +245,42 @@ async function linkedTitle() {
 
 /* Tire n cartes. Chaque emplacement a une petite chance d'être une page
  * populaire (souvent ultra rare / légendaire) ou une page liée à une page
- * populaire (souvent rare / super rare). Le reste est purement aléatoire. */
-async function drawCards(n, luck = 1) {
+ * populaire (souvent rare / super rare). Le reste vient de la source du
+ * booster : tout Wikipédia ou une catégorie thématique. */
+async function drawCards(n, { luck = 1, cat = null, sure = 0 } = {}) {
   const special = [];
-  let randomNeeded = 0;
+  let baseNeeded = 0;
   for (let i = 0; i < n; i++) {
     const r = Math.random();
-    if (r < 0.05 * luck) special.push('top');
-    else if (r < 0.25 * luck) special.push('linked');
-    else randomNeeded++;
+    if (r < 0.01 * luck) special.push('top');
+    else if (i < sure || r < 0.15 * luck) special.push('linked');
+    else baseNeeded++;
   }
+  const base = n => cat
+    ? categoryCards(cat, n).then(c => c.length ? c : randomCards(n))
+    : randomCards(n);
   const titleJobs = special.map(kind => kind === 'top'
     ? popularTitles().then(t => pick(t.slice(0, 400)))
     : linkedTitle());
-  const [titles, randoms] = await Promise.all([
+  const [titles, based] = await Promise.all([
     Promise.allSettled(titleJobs),
-    randomNeeded ? randomCards(randomNeeded) : Promise.resolve([]),
+    baseNeeded ? base(baseNeeded) : Promise.resolve([]),
   ]);
-  const okTitles = titles.filter(t => t.status === 'fulfilled' && t.value).map(t => t.value);
-  let cards = [...(await detailsForTitles(okTitles).catch(() => [])), ...randoms];
+  const okTitles = [...new Set(titles.filter(t => t.status === 'fulfilled' && t.value).map(t => t.value))];
+  let cards = [...(await detailsForTitles(okTitles).catch(() => [])), ...based];
   // dédoublonne et complète si besoin
   const seen = new Set();
   cards = cards.filter(c => !seen.has(c.id) && seen.add(c.id));
-  let guard = 0;
-  while (cards.length < n && guard++ < 3) {
-    for (const c of await randomCards(n - cards.length)) if (!seen.has(c.id)) { seen.add(c.id); cards.push(c); }
+  for (let guard = 0; cards.length < n && guard < 3; guard++) {
+    for (const c of await base(n - cards.length)) if (!seen.has(c.id)) { seen.add(c.id); cards.push(c); }
   }
-  return cards.slice(0, n);
+  return shuffle(cards).slice(0, n);
 }
 
 // ---------------------------------------------------------------- Rendu carte
 
 function cardHTML(card, opts = {}) {
   const r = rarityOf(card);
-  const { atk, def } = statsOf(card);
   const owned = state.cards[card.id];
   const count = opts.count ?? (owned ? owned.n : 0);
   const img = card.img
@@ -253,9 +295,8 @@ function cardHTML(card, opts = {}) {
       <div class="card-title">${esc(card.t)}</div>
       <div class="card-desc">${esc(card.x)}</div>
       <div class="card-stats">
-        <span class="atk">⚔ ${atk}</span>
-        <span class="views">👁 ${compact(card.v)}</span>
-        <span class="def">🛡 ${def}</span>
+        <span class="views">👁 ${compact(card.v)} vues</span>
+        <span class="value">₩${r.sell}</span>
       </div>
     </div>`;
 }
@@ -287,7 +328,6 @@ function show(view) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + view));
   if (view === 'album') renderAlbum();
-  if (view === 'duel' && !duel) renderDuelSetup();
   if (view === 'market') renderMarket();
   if (view === 'profile') renderProfile();
 }
@@ -296,6 +336,13 @@ document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () =>
 function renderWallet() { $('#wallet').textContent = fmt(state.money); }
 
 // ---------------------------------------------------------------- Boosters
+
+let selectedPack = packById(state.pack);
+let opening = false;
+let prefetched = null;   // { id, promise } : le prochain booster, chargé à l'avance
+
+const packStyle = p => `--c1:${p.colors[0]};--c2:${p.colors[1]};--c3:${p.colors[2]}`;
+const isFree = p => p.id === 'classique';
 
 function tickStock() {
   const t = now();
@@ -313,6 +360,7 @@ function tickStock() {
 }
 
 function renderStock() {
+  const p = selectedPack;
   $('#stock').textContent = state.stock;
   $('#stock-max').textContent = STOCK_MAX;
   $('#stock-bar-fill').style.width = (state.stock / STOCK_MAX * 100) + '%';
@@ -321,79 +369,163 @@ function renderStock() {
   } else {
     const left = REGEN_MS - (now() - state.lastRegen);
     const m = Math.floor(left / 60000), s = Math.floor(left % 60000 / 1000);
-    $('#stock-timer').textContent = `Prochain booster dans ${m}:${String(s).padStart(2, '0')}`;
+    $('#stock-timer').textContent = `Prochain booster gratuit dans ${m}:${String(s).padStart(2, '0')}`;
   }
-  const busy = opening;
-  $('#open-btn').disabled = busy || state.stock < 1;
-  $('#buy-booster-btn').disabled = busy || state.money < BOOSTER_PRICE;
-  $('#pack').classList.toggle('disabled', busy || state.stock < 1);
+  const free = isFree(p);
+  const all = Math.min(state.stock, MULTI_MAX);
+  $('#open-btn').classList.toggle('hidden', !free);
+  $('#open-btn').disabled = opening || state.stock < 1;
+  $('#open-all-btn').classList.toggle('hidden', !free || all < 2);
+  $('#open-all-btn').disabled = opening;
+  $('#open-all-btn').textContent = `Tout ouvrir (${all})`;
+  $('#buy-booster-btn').textContent = `Acheter et ouvrir · ₩${p.price}`;
+  $('#buy-booster-btn').classList.toggle('primary', !free);
+  $('#buy-booster-btn').disabled = opening || state.money < p.price;
+  const canOpen = free ? state.stock > 0 || state.money >= p.price : state.money >= p.price;
+  $('#pack').classList.toggle('disabled', opening || !canOpen);
 }
 
-$('#rarity-list').innerHTML = RARITIES.map((r, i) => {
-  const next = RARITIES[i + 1];
-  const range = next ? `${fmt(r.min)} – ${fmt(next.min - 1)} vues` : `${fmt(r.min)}+ vues`;
-  return `<li class="r-${r.id}"><span><span class="dot"></span>${r.name}</span><span class="muted">${range} · vente ₩${r.sell}</span></li>`;
-}).join('');
-$('#booster-price').textContent = BOOSTER_PRICE;
+function renderSelectedPack() {
+  const p = selectedPack;
+  const el = $('#pack');
+  el.setAttribute('style', packStyle(p));
+  el.className = `pack pack-${p.id}`;
+  el.innerHTML = `
+    <div class="pack-shine"></div>
+    <div class="pack-logo">${esc(p.ico)}</div>
+    <div class="pack-title">Booster<br>${esc(p.name)}</div>
+    <div class="pack-sub">${BOOSTER_SIZE} cartes · fr.wikipedia.org</div>`;
+  $('#pack-name').textContent = `Booster ${p.name}`;
+  $('#pack-desc').textContent = p.desc;
+  const top = Math.min(1, 0.01 * p.luck), linked = Math.min(1, 0.15 * p.luck) - top;
+  $('#pack-odds').innerHTML = `Par carte : <b>${pct(top)}</b> de chance d'une page très célèbre, <b>${pct(linked)}</b> d'une page connue`
+    + (p.sure ? `, et <b>${p.sure}</b> page connue garantie` : '') + '.';
+}
+const pct = x => (x * 100).toLocaleString('fr-FR', { maximumFractionDigits: 1 }) + ' %';
 
-let opening = false;
-let prefetched = null;
-function prefetchBooster() {
-  if (!prefetched) prefetched = drawCards(BOOSTER_SIZE).catch(() => { prefetched = null; return null; });
+function renderPackShop() {
+  $('#pack-shop').innerHTML = PACKS.map(p => `
+    <button class="shop-item ${p.id === selectedPack.id ? 'active' : ''}" data-pack="${p.id}">
+      <span class="pack mini" style="${packStyle(p)}"><span class="pack-logo">${esc(p.ico)}</span></span>
+      <span class="shop-text">
+        <b>${esc(p.name)}</b>
+        <small>${esc(p.desc)}</small>
+        <span class="price">₩${p.price}${isFree(p) ? ' · ou gratuit avec le stock' : ''}</span>
+      </span>
+    </button>`).join('');
 }
 
-async function openBooster(paid) {
+function selectPack(id) {
   if (opening) return;
-  if (!paid && state.stock < 1) return toast('Plus de booster en stock. Patiente un peu ou achètes-en un !', 'bad');
-  if (paid && state.money < BOOSTER_PRICE) return toast('Pas assez de wikibidous.', 'bad');
+  selectedPack = packById(id);
+  state.pack = selectedPack.id;
+  save();
+  renderSelectedPack();
+  renderPackShop();
+  renderStock();
+  prefetchBooster();
+}
+
+function prefetchBooster() {
+  const p = selectedPack;
+  if (prefetched && prefetched.id === p.id) return;
+  const entry = { id: p.id };
+  entry.promise = drawCards(BOOSTER_SIZE, p).catch(() => {
+    if (prefetched === entry) prefetched = null;
+    return null;
+  });
+  prefetched = entry;
+}
+
+function takePrefetched() {
+  prefetchBooster();
+  const { promise } = prefetched;
+  prefetched = null;
+  return promise;
+}
+
+// Ouvre `count` boosters du type sélectionné (payés ou pris dans le stock gratuit).
+async function openBooster(paid, count = 1) {
+  if (opening) return;
+  const p = selectedPack;
+  if (!isFree(p)) paid = true;
+  if (!paid && state.stock < count) {
+    return toast(state.money >= p.price
+      ? `Plus de booster gratuit. Tu peux en acheter un pour ₩${p.price}.`
+      : 'Plus de booster en stock. Patiente un peu !', 'bad');
+  }
+  if (paid && state.money < p.price * count) return toast('Pas assez de wikibidous.', 'bad');
+
   opening = true;
   renderStock();
-  const pack = $('#pack');
-  pack.classList.add('opening');
+  const el = $('#pack');
+  el.classList.add('opening');
   $('#reveal').classList.add('hidden');
   try {
-    prefetchBooster();
-    const [cards] = await Promise.all([prefetched, sleep(900)]);
-    prefetched = null;
-    if (!cards || !cards.length) throw new Error('vide');
-    if (paid) addMoney(-BOOSTER_PRICE); else state.stock--;
-    state.stats.opened++;
+    const jobs = [takePrefetched()];
+    for (let i = 1; i < count; i++) jobs.push(drawCards(BOOSTER_SIZE, p));
+    const [packs] = await Promise.all([Promise.all(jobs), sleep(900)]);
+    const ok = packs.filter(cards => cards && cards.length);
+    if (!ok.length) throw new Error('vide');
+    const n = ok.length;
+    if (paid) addMoney(-p.price * n); else state.stock -= n;
+    state.stats.opened += n;
+    state.stats.packs[p.id] = (state.stats.packs[p.id] || 0) + n;
+    if (ok.some(cards => cards.filter(c => tierOf(c) === 5).length >= 2)) state.stats.godpack++;
     save();
-    showReveal(cards);
+    showReveal(ok.flat(), p, n);
     prefetchBooster();
   } catch (e) {
     console.error(e);
     toast('Impossible de joindre Wikipédia. Vérifie ta connexion et réessaie.', 'bad');
     opening = false;
   } finally {
-    pack.classList.remove('opening');
+    el.classList.remove('opening');
     renderStock();
   }
 }
 
-function showReveal(cards) {
+function showReveal(cards, pack, nPacks) {
   // la meilleure carte en dernier, pour le suspense
   cards.sort((a, b) => a.v - b.v);
   const row = $('#reveal-row');
+  row.classList.toggle('many', cards.length > BOOSTER_SIZE);
   row.innerHTML = cards.map((c, i) => `
-    <div class="flip r-${rarityOf(c).id}" data-i="${i}">
+    <div class="flip r-${rarityOf(c).id} ${tierOf(c) >= 2 ? 'glow' : ''}" data-i="${i}">
       <div class="flip-inner">
-        <div class="flip-front"><div class="card-back" style="animation-delay:${i * 90}ms">W</div></div>
+        <div class="flip-front"><div class="card-back" style="${packStyle(pack)};animation-delay:${Math.min(i, 20) * 70}ms">${esc(pack.ico)}</div></div>
         <div class="flip-back">${cardHTML(c, { isNew: !state.cards[c.id], hideCount: true })}</div>
       </div>
     </div>`).join('');
   $('#reveal').classList.remove('hidden');
   $('#reveal-done').classList.add('hidden');
-  $('#reveal-hint').textContent = 'Clique sur les cartes pour les retourner';
+  $('#reveal-all').classList.remove('hidden');
+  $('#reveal-title').textContent = nPacks > 1 ? `${nPacks} boosters ${pack.name}` : `Booster ${pack.name}`;
+  $('#reveal-hint').textContent = 'Clique sur les cartes pour les retourner — la meilleure est à la fin !';
+
   let flipped = 0;
-  row.querySelectorAll('.flip').forEach(el => el.addEventListener('click', () => {
-    if (el.classList.contains('flipped')) return openDetail(cards[el.dataset.i]);
+  const flip = el => {
+    if (el.classList.contains('flipped')) return;
     el.classList.add('flipped');
     const c = cards[el.dataset.i];
     const t = tierOf(c);
-    if (t >= 3) toast(`✨ <b>${esc(rarityOf(c).name)}</b> : ${esc(c.t)} !`, 'gold');
-    if (++flipped === cards.length) finishReveal(cards);
+    if (t >= 4) celebrate(t);
+    if (t >= (nPacks > 1 ? 4 : 3)) toast(`✨ <b>${esc(rarityOf(c).name)}</b> : ${esc(c.t)} !`, 'gold');
+    $('#reveal-count').textContent = `${++flipped} / ${cards.length}`;
+    if (flipped === cards.length) finishReveal(cards, pack, nPacks);
+  };
+  $('#reveal-count').textContent = `0 / ${cards.length}`;
+  row.querySelectorAll('.flip').forEach(el => el.addEventListener('click', () => {
+    if (el.classList.contains('flipped')) openDetail(cards[el.dataset.i]);
+    else flip(el);
   }));
+  $('#reveal-all').onclick = async () => {
+    $('#reveal-all').classList.add('hidden');
+    for (const el of row.querySelectorAll('.flip:not(.flipped)')) {
+      flip(el);
+      await sleep(cards.length > BOOSTER_SIZE ? 60 : 220);
+    }
+  };
   $('#reveal-done').onclick = () => {
     $('#reveal').classList.add('hidden');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -401,27 +533,91 @@ function showReveal(cards) {
   $('#reveal').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function finishReveal(cards) {
+function finishReveal(cards, pack, nPacks) {
   let newOnes = 0;
   for (const c of cards) {
     const prev = state.cards[c.id];
     if (prev) { prev.n++; Object.assign(prev, c, { n: prev.n, at: prev.at }); }
     else { state.cards[c.id] = { ...c, n: 1, at: now() }; newOnes++; }
+    state.stats.pulls[tierOf(c)] = (state.stats.pulls[tierOf(c)] || 0) + 1;
   }
+  state.history.unshift({ at: now(), pack: pack.id, n: nPacks, cards: cards.map(c => ({ id: c.id, t: c.t, v: c.v })) });
+  state.history.length = Math.min(state.history.length, HISTORY_MAX);
   save();
   checkAchievements();
   opening = false;
   renderStock();
+  renderHistory();
+  $('#reveal-all').classList.add('hidden');
   $('#reveal-hint').textContent = newOnes
     ? `${newOnes} nouvelle${newOnes > 1 ? 's' : ''} carte${newOnes > 1 ? 's' : ''} pour ton album !`
     : 'Que des doublons… tu peux les revendre dans l\'album.';
   $('#reveal-done').classList.remove('hidden');
 }
 
-$('#pack').addEventListener('click', () => openBooster(false));
-$('#pack').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBooster(false); } });
+// Flash + confettis pour les cartes ultra rares et légendaires.
+function celebrate(tier) {
+  const fx = document.createElement('div');
+  fx.className = `fx fx-${RARITIES[tier].id}`;
+  const colors = tier === 5 ? ['#ffd23f', '#fff3b0', '#ffb300', '#ffffff'] : ['#ff7a3d', '#ffb38a', '#ffd23f', '#ff5d73'];
+  const n = tier === 5 ? 90 : 40;
+  for (let i = 0; i < n; i++) {
+    const c = document.createElement('i');
+    c.style.left = Math.random() * 100 + '%';
+    c.style.background = pick(colors);
+    c.style.animationDelay = Math.random() * 0.6 + 's';
+    c.style.animationDuration = 1.6 + Math.random() * 1.4 + 's';
+    c.style.setProperty('--drift', (Math.random() * 200 - 100) + 'px');
+    fx.appendChild(c);
+  }
+  document.body.appendChild(fx);
+  setTimeout(() => fx.remove(), 3500);
+}
+
+function renderHistory() {
+  const h = state.history;
+  $('#history').innerHTML = h.length ? h.map(entry => {
+    const p = packById(entry.pack);
+    const best = entry.cards.reduce((a, c) => (c.v > a.v ? c : a));
+    const r = rarityOf(best);
+    const when = new Date(entry.at).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return `
+      <div class="hist">
+        <span class="pack mini tiny" style="${packStyle(p)}"><span class="pack-logo">${esc(p.ico)}</span></span>
+        <div class="hist-main">
+          <div><b>${esc(p.name)}</b>${entry.n > 1 ? ` ×${entry.n}` : ''} <span class="muted small">· ${when}</span></div>
+          <div class="hist-dots">${entry.cards.map(c => `<span class="dot r-${rarityOf(c).id}" title="${esc(c.t)}"></span>`).join('')}</div>
+        </div>
+        <div class="hist-best r-${r.id}" data-id="${best.id}"><small>Meilleure carte</small><b>${esc(best.t)}</b><span>${r.name}</span></div>
+      </div>`;
+  }).join('') : '<p class="muted">Aucun booster ouvert pour l\'instant.</p>';
+}
+
+$('#history').addEventListener('click', e => {
+  const b = e.target.closest('.hist-best');
+  if (b && state.cards[b.dataset.id]) openDetail(state.cards[b.dataset.id]);
+});
+
+$('#rarity-list').innerHTML = RARITIES.map((r, i) => {
+  const next = RARITIES[i + 1];
+  const range = next ? `${fmt(r.min)} – ${fmt(next.min - 1)} vues` : `${fmt(r.min)}+ vues`;
+  return `<li class="r-${r.id}"><span><span class="dot"></span>${r.name}</span><span class="muted">${range} · vente ₩${r.sell}</span></li>`;
+}).join('');
+
+function clickPack() {
+  const p = selectedPack;
+  if (isFree(p) && state.stock < 1 && state.money >= p.price) return openBooster(true);
+  openBooster(!isFree(p));
+}
+$('#pack').addEventListener('click', clickPack);
+$('#pack').addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); clickPack(); } });
 $('#open-btn').addEventListener('click', () => openBooster(false));
+$('#open-all-btn').addEventListener('click', () => openBooster(false, Math.min(state.stock, MULTI_MAX)));
 $('#buy-booster-btn').addEventListener('click', () => openBooster(true));
+$('#pack-shop').addEventListener('click', e => {
+  const b = e.target.closest('[data-pack]');
+  if (b) selectPack(b.dataset.pack);
+});
 
 // ---------------------------------------------------------------- Album
 
@@ -482,7 +678,6 @@ function openDetail(card, opts = {}) {
   if (!card) return;
   const owned = state.cards[card.id];
   const r = rarityOf(card);
-  const { atk, def } = statsOf(card);
   const url = 'https://fr.wikipedia.org/wiki/' + encodeURIComponent(card.t.replace(/ /g, '_'));
   $('#modal-box').innerHTML = `
     <div class="detail">
@@ -493,7 +688,6 @@ function openDetail(card, opts = {}) {
         <dl class="kv">
           <dt>Rareté</dt><dd class="r-${r.id}"><span class="dot"></span>${r.name}</dd>
           <dt>Vues (30 jours)</dt><dd>${fmt(card.v)}</dd>
-          <dt>Attaque / Défense</dt><dd>⚔ ${atk} · 🛡 ${def}</dd>
           <dt>Valeur de revente</dt><dd>₩${r.sell}</dd>
           ${owned ? `<dt>Exemplaires</dt><dd>${owned.n}</dd><dt>Obtenue le</dt><dd>${new Date(owned.at).toLocaleDateString('fr-FR')}</dd>` : ''}
         </dl>
@@ -536,7 +730,7 @@ async function refreshMarket(paid) {
   marketLoading = true;
   $('#market-grid').innerHTML = '<p class="empty"><span class="loader"></span> Les marchands installent leurs étals…</p>';
   try {
-    const cards = await drawCards(6, 2.5);
+    const cards = await drawCards(6, { luck: 2.5 });
     if (!cards.length) throw new Error('vide');
     if (paid) addMoney(-MARKET_REFRESH_PRICE);
     state.market = {
@@ -592,323 +786,6 @@ $('#market-grid').addEventListener('click', e => {
 });
 $('#market-refresh').addEventListener('click', () => refreshMarket(true));
 
-// ---------------------------------------------------------------- Duel
-
-let deck = [];
-let duel = null;
-
-function renderDuelSetup() {
-  $('#duel-setup').classList.remove('hidden');
-  $('#duel-arena').classList.add('hidden');
-  const all = Object.values(state.cards).sort((a, b) => tierOf(b) - tierOf(a) || b.v - a.v);
-  deck = deck.filter(id => state.cards[id]);
-  $('#deck-slots').innerHTML = [0, 1, 2].map(i => {
-    const c = state.cards[deck[i]];
-    return c ? cardHTML(c, { hideCount: true, extraAttr: 'data-slot="1"' }) : `<div class="slot">Carte ${i + 1}</div>`;
-  }).join('');
-  $('#duel-pick').innerHTML = all.map(c => cardHTML(c, { hideCount: true }).replace('class="card ', `class="card ${deck.includes(c.id) ? 'selected ' : ''}`)).join('');
-  $('#duel-empty').classList.toggle('hidden', all.length >= 3);
-  $('#duel-start').disabled = deck.length !== 3;
-  $('#duel-auto').disabled = all.length < 3;
-}
-
-$('#duel-pick').addEventListener('click', e => {
-  const el = e.target.closest('.card');
-  if (!el) return;
-  const id = +el.dataset.id;
-  if (deck.includes(id)) deck = deck.filter(x => x !== id);
-  else if (deck.length < 3) deck.push(id);
-  else toast('Ton deck est complet (3 cartes). Retire une carte d\'abord.');
-  renderDuelSetup();
-});
-$('#deck-slots').addEventListener('click', e => {
-  const el = e.target.closest('.card');
-  if (el) { deck = deck.filter(x => x !== +el.dataset.id); renderDuelSetup(); }
-});
-$('#duel-auto').addEventListener('click', () => {
-  deck = Object.values(state.cards).sort((a, b) => {
-    const sa = statsOf(a), sb = statsOf(b);
-    return (sb.atk + sb.def) - (sa.atk + sa.def);
-  }).slice(0, 3).map(c => c.id);
-  renderDuelSetup();
-});
-
-$('#duel-start').addEventListener('click', async () => {
-  const btn = $('#duel-start');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="loader"></span> Recherche d\'un adversaire…';
-  try {
-    const mine = deck.map(id => state.cards[id]);
-    const avgTier = mine.reduce((a, c) => a + tierOf(c), 0) / 3;
-    const botCards = await drawCards(3, 1 + avgTier * 0.6);
-    if (botCards.length < 3) throw new Error('pas assez de cartes');
-    startDuel(mine, botCards);
-  } catch (e) {
-    console.error(e);
-    toast('Impossible de trouver un adversaire (Wikipédia injoignable).', 'bad');
-  }
-  btn.textContent = 'Lancer le duel';
-  btn.disabled = deck.length !== 3;
-});
-
-function startDuel(mine, bot) {
-  duel = {
-    mine, bot, round: 0, hp: { me: 100, bot: 100 }, errors: 0,
-    level: +$('#duel-level').value,
-  };
-  $('#duel-setup').classList.add('hidden');
-  $('#duel-arena').classList.remove('hidden');
-  $('#duel-log').innerHTML = '';
-  playRound();
-}
-
-function renderArena() {
-  const d = duel;
-  $('#arena-me').innerHTML = cardHTML(d.mine[d.round], { hideCount: true });
-  $('#arena-bot').innerHTML = cardHTML(d.bot[d.round], { hideCount: true });
-  $('#duel-round').textContent = `Manche ${d.round + 1} / 3`;
-  renderHP();
-}
-
-function renderHP() {
-  for (const who of ['me', 'bot']) {
-    const hp = Math.max(0, duel.hp[who]);
-    $(`#hp-${who}`).style.width = hp + '%';
-    $(`#hp-${who}-txt`).textContent = `${hp} PV`;
-  }
-}
-
-function log(msg, cls = '') {
-  const li = document.createElement('li');
-  li.className = cls;
-  li.innerHTML = msg;
-  $('#duel-log').appendChild(li);
-}
-
-function hitAnim(who) {
-  const el = $(`#arena-${who} .card`);
-  if (!el) return;
-  el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit');
-}
-
-function damage(attacker, defender) {
-  return Math.max(5, statsOf(attacker).atk - Math.floor(statsOf(defender).def / 2));
-}
-
-async function playRound() {
-  const d = duel;
-  renderArena();
-  const myCard = d.mine[d.round], botCard = d.bot[d.round];
-
-  // Ton tour
-  const ok = await askQuestion(myCard);
-  if (ok) {
-    const dmg = damage(myCard, botCard);
-    d.hp.bot -= dmg;
-    hitAnim('bot');
-    log(`✔ Bonne réponse ! « ${esc(myCard.t)} » inflige <b>${dmg}</b> dégâts.`, 'good');
-  } else {
-    d.errors++;
-    const dmg = damage(botCard, myCard);
-    d.hp.me -= dmg;
-    hitAnim('me');
-    log(`✘ Mauvaise réponse… tu perds <b>${dmg}</b> PV.`, 'bad');
-  }
-  renderHP();
-  if (await checkEnd()) return;
-
-  // Tour de l'IA
-  $('#question').innerHTML = `<h3>L'IA réfléchit à une question sur « ${esc(botCard.t)} »… <span class="loader"></span></h3>`;
-  await sleep(1400);
-  const botOk = Math.random() < d.level;
-  if (botOk) {
-    const dmg = damage(botCard, myCard);
-    d.hp.me -= dmg;
-    hitAnim('me');
-    log(`🤖 L'IA répond juste sur « ${esc(botCard.t)} » et t'inflige <b>${dmg}</b> dégâts.`, 'bad');
-  } else {
-    const dmg = damage(myCard, botCard);
-    d.hp.bot -= dmg;
-    hitAnim('bot');
-    log(`🤖 L'IA se trompe sur « ${esc(botCard.t)} » et perd <b>${dmg}</b> PV.`, 'good');
-  }
-  renderHP();
-  await sleep(900);
-  if (await checkEnd()) return;
-
-  d.round++;
-  if (d.round >= 3) return endDuel();
-  playRound();
-}
-
-async function checkEnd() {
-  if (duel.hp.me <= 0 || duel.hp.bot <= 0) { await sleep(500); endDuel(); return true; }
-  return false;
-}
-
-function endDuel() {
-  const d = duel;
-  const me = Math.max(0, d.hp.me), bot = Math.max(0, d.hp.bot);
-  let title, reward, cls;
-  if (me > bot) {
-    reward = 20 + d.bot.reduce((a, c) => a + tierOf(c) * 4, 0) + (d.errors === 0 ? 15 : 0);
-    title = '🏆 Victoire !'; cls = 'good';
-    state.stats.wins++;
-    if (d.errors === 0) state.stats.perfect++;
-  } else if (me === bot) {
-    reward = 8; title = '🤝 Égalité'; cls = '';
-    state.stats.draws++;
-  } else {
-    reward = 3; title = '💀 Défaite'; cls = 'bad';
-    state.stats.losses++;
-  }
-  addMoney(reward);
-  save();
-  checkAchievements();
-  $('#question').innerHTML = `
-    <h3 class="${cls}">${title}</h3>
-    <p>${fmt(me)} PV contre ${fmt(bot)} PV${d.errors === 0 && me > bot ? ' — sans aucune erreur !' : ''}. Tu gagnes <b>₩${reward}</b>.</p>
-    <p class="muted small">Cartes de l'IA : ${d.bot.map(c => `<a href="#" data-bot="${c.id}">${esc(c.t)}</a> (${rarityOf(c).name})`).join(', ')}</p>
-    <div class="row"><button class="btn primary" id="duel-again">Rejouer</button><button class="btn" id="duel-back">Changer de deck</button></div>`;
-  $('#question').querySelectorAll('[data-bot]').forEach(a => a.addEventListener('click', e => {
-    e.preventDefault();
-    openDetail(d.bot.find(c => String(c.id) === a.dataset.bot), { readOnly: true });
-  }));
-  $('#duel-again').onclick = () => { duel = null; renderDuelSetup(); $('#duel-start').click(); };
-  $('#duel-back').onclick = () => { duel = null; renderDuelSetup(); };
-}
-
-// ----- Génération des questions
-
-function stripTitle(title) { return title.replace(/\s*\(.*\)\s*$/, ''); }
-
-function maskTitle(text, title) {
-  const words = stripTitle(title).split(/[\s'’\-,]+/).filter(w => w.length >= 3);
-  let out = text;
-  for (const w of words) {
-    const re = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-    out = out.replace(re, '▇▇▇');
-  }
-  return out;
-}
-
-function otherCards(card) {
-  const pool = [...Object.values(state.cards), ...(duel ? duel.bot : []), ...state.market.offers.map(o => o.card)];
-  const seen = new Set([card.id]);
-  return shuffle(pool.filter(c => !seen.has(c.id) && seen.add(c.id)));
-}
-
-function distractorTitles(card, n) {
-  const titles = new Set();
-  for (const c of otherCards(card)) { if (titles.size >= n) break; titles.add(c.t); }
-  for (const t of shuffle(FALLBACK_TITLES)) { if (titles.size >= n) break; if (t !== card.t) titles.add(t); }
-  return [...titles].slice(0, n);
-}
-
-const STOP = new Set(['comme', 'notamment', 'également', 'depuis', 'pendant', 'premier', 'première', 'plusieurs', 'contre', 'autres', 'ensuite', 'toutefois', 'cependant', 'lorsque', 'jusqu', 'environ', 'quelques', 'nombreux', 'nombreuses', 'certains', 'entre', 'ainsi', 'avant', 'après']);
-const wordsOf = text => (text.match(/[A-Za-zÀ-ÖØ-öø-ÿœŒ]{7,}/g) || []).filter(w => !STOP.has(w.toLowerCase()));
-
-function makeQuestion(card) {
-  const types = ['guess', 'blank', 'views'];
-  for (const type of shuffle(types)) {
-    const q = buildQuestion(type, card);
-    if (q) return q;
-  }
-  return buildQuestion('guess', card);
-}
-
-function buildQuestion(type, card) {
-  if (type === 'guess') {
-    const excerpt = maskTitle(card.x.slice(0, 320), card.t);
-    return {
-      title: 'De quelle page Wikipédia vient cet extrait ?',
-      quote: excerpt + (card.x.length > 320 ? '…' : ''),
-      answer: card.t,
-      options: shuffle([card.t, ...distractorTitles(card, 3)]),
-    };
-  }
-  if (type === 'blank') {
-    const titleWords = new Set(stripTitle(card.t).toLowerCase().split(/\s+/));
-    const sentences = card.x.split(/(?<=[.!?])\s+/).filter(s => s.length > 40 && s.length < 260);
-    for (const s of shuffle(sentences)) {
-      const candidates = wordsOf(s).filter(w => !titleWords.has(w.toLowerCase()) && w[0] === w[0].toLowerCase());
-      if (!candidates.length) continue;
-      const word = pick(candidates);
-      const others = new Set();
-      for (const c of otherCards(card)) {
-        for (const w of shuffle(wordsOf(c.x))) {
-          if (w.toLowerCase() !== word.toLowerCase() && w[0] === w[0].toLowerCase() && !s.includes(w)) { others.add(w); break; }
-        }
-        if (others.size >= 3) break;
-      }
-      if (others.size < 3) return null;
-      return {
-        title: 'Quel mot manque dans cette phrase ?',
-        quote: esc(maskTitle(s, card.t)).replace(new RegExp(`(^|[^\\p{L}])${word}(?![\\p{L}])`, 'u'), '$1<span class="blank">&nbsp;</span>'),
-        raw: true,
-        answer: word,
-        options: shuffle([word, ...[...others].slice(0, 3)]),
-      };
-    }
-    return null;
-  }
-  if (type === 'views') {
-    const others = otherCards(card).filter(c => Math.abs(c.v - card.v) > card.v * 0.15 + 10);
-    const chosen = [];
-    for (const c of others) {
-      if (chosen.every(o => Math.abs(o.v - c.v) > o.v * 0.15 + 10)) chosen.push(c);
-      if (chosen.length === 3) break;
-    }
-    if (chosen.length < 3) return null;
-    const set = [card, ...chosen];
-    const best = set.reduce((a, b) => (b.v > a.v ? b : a));
-    return {
-      title: 'Laquelle de ces pages a été la plus consultée ces 30 derniers jours ?',
-      answer: best.t,
-      options: shuffle(set.map(c => c.t)),
-      explain: set.sort((a, b) => b.v - a.v).map(c => `${esc(c.t)} : ${fmt(c.v)}`).join(' · '),
-    };
-  }
-  return null;
-}
-
-const QUESTION_TIME = 25;
-
-function askQuestion(card) {
-  const q = makeQuestion(card);
-  return new Promise(resolve => {
-    const box = $('#question');
-    box.innerHTML = `
-      <div class="muted small">Ta carte : <b>${esc(card.t)}</b></div>
-      <h3>${esc(q.title)}</h3>
-      ${q.quote ? `<blockquote>${q.raw ? q.quote : esc(q.quote)}</blockquote>` : ''}
-      <div class="answers">${q.options.map(o => `<button class="btn" data-o="${esc(o)}">${esc(o)}</button>`).join('')}</div>
-      <div class="timerbar"><div id="qtimer"></div></div>`;
-    let done = false;
-    const bar = $('#qtimer');
-    bar.style.transition = `width ${QUESTION_TIME}s linear`;
-    requestAnimationFrame(() => requestAnimationFrame(() => { bar.style.width = '0%'; }));
-    const finish = async chosen => {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      const ok = chosen === q.answer;
-      box.querySelectorAll('[data-o]').forEach(b => {
-        b.disabled = true;
-        if (b.dataset.o === q.answer) b.classList.add('right');
-        else if (b.dataset.o === chosen) b.classList.add('wrong');
-      });
-      bar.style.transition = 'none';
-      if (chosen === null) log('⏱ Temps écoulé !', 'bad');
-      if (q.explain) box.insertAdjacentHTML('beforeend', `<p class="muted small">${q.explain}</p>`);
-      await sleep(q.explain ? 2200 : 1300);
-      resolve(ok);
-    };
-    const timer = setTimeout(() => finish(null), QUESTION_TIME * 1000);
-    box.querySelectorAll('[data-o]').forEach(b => b.addEventListener('click', () => finish(b.dataset.o)));
-  });
-}
-
 // ---------------------------------------------------------------- Profil
 
 function checkAchievements() {
@@ -930,7 +807,7 @@ function renderProfile() {
     ['Cartes au total', fmt(cards.reduce((a, c) => a + c.n, 0))],
     ['Valeur de l\'album', '₩' + fmt(value)],
     ['Boosters ouverts', fmt(state.stats.opened)],
-    ['Duels', `${state.stats.wins} V · ${state.stats.draws} N · ${state.stats.losses} D`],
+    ...RARITIES.map((r, i) => [`${r.name}s tirées`, fmt(state.stats.pulls[i] || 0)]),
     ['Wikibidous gagnés', '₩' + fmt(state.stats.earned)],
     ['Meilleure carte', best ? esc(best.t) : '—'],
   ];
@@ -969,7 +846,6 @@ $('#import-save').addEventListener('click', () => {
 $('#reset-save').addEventListener('click', () => {
   if (!confirm('Effacer toute ta collection et recommencer à zéro ?')) return;
   state = freshState();
-  deck = [];
   save();
   renderAll();
   toast('Nouvelle partie commencée.');
@@ -978,6 +854,10 @@ $('#reset-save').addEventListener('click', () => {
 // ---------------------------------------------------------------- Boucle
 
 function renderAll() {
+  selectedPack = packById(state.pack);
+  renderSelectedPack();
+  renderPackShop();
+  renderHistory();
   renderWallet();
   renderStock();
   show(currentView);
